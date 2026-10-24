@@ -1,4 +1,4 @@
-# LG Control
+# Screen Monitor
 
 A small personal macOS app (macOS 14+) that controls an LG ULTRAFINE over DDC/CI:
 brightness, contrast, volume, mute and input switching (Mac, PS5 and Windows), from a
@@ -11,9 +11,11 @@ so it works on Apple silicon over HDMI.
 scripts/build-app.sh
 ```
 
-This builds a release binary, wraps it in `LG Control.app`, signs it and installs it to
-`~/Applications/LG Control.app` (replacing any running copy). Command Line Tools are enough;
+This builds a release binary, wraps it in `Screen Monitor.app`, signs it and installs it to
+`~/Applications/Screen Monitor.app` (replacing any running copy). Command Line Tools are enough;
 Xcode isn't needed.
+
+> Upgrading from LG Control: delete ~/Applications/LG Control.app; the bundle ID is unchanged, so permissions and settings carry over (toggle Launch at login off and on once).
 
 ### One-time signing certificate
 
@@ -48,7 +50,7 @@ Settings › Keyboard › Control brightness and volume keys.
 ### Accessibility permission
 
 The keys (and the screen split) need Accessibility permission. On first launch macOS asks for
-it; or open Settings › Keyboard and press **Open System Settings**, then switch on **LG Control** under Privacy &
+it; or open Settings › Keyboard and press **Open System Settings**, then switch on **Screen Monitor** under Privacy &
 Security › Accessibility. The app notices within a second; no restart needed. Without the
 permission everything else works and the keys stay with macOS.
 
@@ -63,7 +65,7 @@ Windows › Screen split (drag a window onto the LG).
 
 It needs the same Accessibility permission as the keys. It only counts a real drag: the window
 has to move more than 4 pt without changing size, so resizing from the left or top edge never
-shows the halves. LG Control's own windows are left alone.
+shows the halves. Screen Monitor's own windows are left alone.
 
 **macOS tiling:** macOS 15 and later tile windows too, when you drag one to a screen edge or hold
 ⌥ while dragging. Both can show at once near the LG's edges. If they get in each other's way,

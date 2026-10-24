@@ -13,7 +13,7 @@ struct LGControlApp: App {
     @StateObject private var model = MonitorModel()
 
     var body: some Scene {
-        Window("LG Control", id: "main") {
+        Window("Screen Monitor", id: "main") {
             ContentView().environmentObject(model)
         }
         .windowResizability(.contentSize)
@@ -27,7 +27,7 @@ struct LGControlApp: App {
         }
 
         // The window style is needed for sliders; the default menu style can't host them.
-        MenuBarExtra("LG Control", systemImage: "display") {
+        MenuBarExtra("Screen Monitor", systemImage: "display") {
             MenuBarContent().environmentObject(model)
         }
         .menuBarExtraStyle(.window)

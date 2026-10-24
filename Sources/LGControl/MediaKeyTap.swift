@@ -27,7 +27,7 @@ final class MediaKeyTap {
         guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
                                           eventsOfInterest: mask, callback: mediaKeyTapCallback,
                                           userInfo: Unmanaged.passUnretained(self).toOpaque()) else {
-            NSLog("LG Control: couldn’t create the key tap (Accessibility not granted?)")
+            NSLog("Screen Monitor: couldn’t create the key tap (Accessibility not granted?)")
             return false
         }
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)

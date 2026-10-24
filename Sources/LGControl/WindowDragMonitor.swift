@@ -8,7 +8,7 @@ import LGKit
 /// macOS has no "window drag" event for other apps, so this infers one: on mouse down it finds
 /// the window under the pointer, and while the mouse is dragged it checks whether that window's
 /// position follows. Global monitors are delivered on the main thread; every Accessibility call
-/// has a 0.1 s timeout so a hung app can't freeze LG Control.
+/// has a 0.1 s timeout so a hung app can't freeze Screen Monitor.
 @MainActor
 final class WindowDragMonitor {
     private struct Tracked {

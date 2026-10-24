@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Builds LG Control.app and installs it to ~/Applications.
+# Builds Screen Monitor.app and installs it to ~/Applications.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 swift build -c release --product LGControl
 BIN="$(swift build -c release --show-bin-path)/LGControl"
 
-APP=".build/LG Control.app"
+APP=".build/Screen Monitor.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp "$BIN" "$APP/Contents/MacOS/LGControl"
@@ -29,7 +29,7 @@ fi
 
 pkill -x LGControl || true
 mkdir -p ~/Applications
-DEST="$HOME/Applications/LG Control.app"
+DEST="$HOME/Applications/Screen Monitor.app"
 rm -rf "$DEST"
 cp -R "$APP" "$DEST"
 echo "$DEST"

@@ -169,7 +169,7 @@ private struct NotConnectedBox: View {
                 Image(systemName: "display.trianglebadge.exclamationmark")
                     .font(.system(size: 36, weight: .light)).foregroundStyle(.secondary)
                 Text("LG not connected").font(.headline)
-                Text("Brightness, contrast and volume come back as soon as the LG answers — LG Control keeps checking.")
+                Text("Brightness, contrast and volume come back as soon as the LG answers — Screen Monitor keeps checking.")
                     .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     .frame(maxWidth: 320)
                 RetryButton()

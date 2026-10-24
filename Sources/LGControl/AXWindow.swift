@@ -3,7 +3,7 @@ import CoreGraphics
 import Foundation
 
 /// Reading and writing other apps' windows over Accessibility. Every element gets a 0.1 s
-/// messaging timeout before use so a hung app can't freeze LG Control on the main thread.
+/// messaging timeout before use so a hung app can't freeze Screen Monitor on the main thread.
 enum AXWindow {
     static let timeout: Float = 0.1
 
@@ -65,6 +65,6 @@ enum AXWindow {
     /// Some windows refuse a move or resize (fixed-size panels, apps that are hung); they simply
     /// stay where they are.
     private static func log(_ error: AXError, _ what: String) {
-        if error != .success { NSLog("LG Control: couldn’t set the window %@ (AXError %d)", what, error.rawValue) }
+        if error != .success { NSLog("Screen Monitor: couldn’t set the window %@ (AXError %d)", what, error.rawValue) }
     }
 }

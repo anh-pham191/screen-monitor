@@ -45,7 +45,7 @@ enum AudioOutput {
             let status = AudioObjectSetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil,
                                                     UInt32(MemoryLayout<AudioObjectID>.size), &device)
             if status != noErr {
-                NSLog("LG Control: couldn’t set the sound output (OSStatus %d)", status)
+                NSLog("Screen Monitor: couldn’t set the sound output (OSStatus %d)", status)
                 ok = false
             }
         }

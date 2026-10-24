@@ -1,4 +1,4 @@
-/// VCP feature codes (MCCS) used by LG Control.
+/// VCP feature codes (MCCS) used by Screen Monitor.
 public enum VCP {
     public static let brightness: UInt8 = 0x10
     public static let contrast: UInt8 = 0x12

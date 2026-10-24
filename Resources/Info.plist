@@ -11,7 +11,9 @@
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleName</key>
-	<string>LG Control</string>
+	<string>Screen Monitor</string>
+	<key>CFBundleDisplayName</key>
+	<string>Screen Monitor</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

@@ -35,7 +35,7 @@ struct MenuBarContent: View {
             }
             Divider()
             VStack(spacing: 2) {
-                MenuRow(title: "Open LG Control") {
+                MenuRow(title: "Open Screen Monitor") {
                     openWindow(id: "main")
                     NSApp.activate()
                 }
