@@ -33,6 +33,13 @@ final class MonitorModel: ObservableObject {
             updateKeyTap()
         }
     }
+    @Published var splitEnabled: Bool {
+        didSet {
+            defaults.set(splitEnabled, forKey: Keys.splitEnabled)
+            if splitEnabled && !accessibilityTrusted { Accessibility.prompt() }
+            updateKeyTap()
+        }
+    }
     @Published private(set) var accessibilityTrusted = Accessibility.isTrusted()
     @Published var syncEnabled: Bool {
         didSet {
@@ -53,6 +60,7 @@ final class MonitorModel: ObservableObject {
         static let lastInput = "lastInput"
         static let inputConfig = "inputConfig"
         static let keysEnabled = "keysEnabled"
+        static let splitEnabled = "splitEnabled"
         static let syncEnabled = "syncEnabled"
         static let syncOffset = "syncOffset"
     }
@@ -68,6 +76,7 @@ final class MonitorModel: ObservableObject {
     private var volumeWriter: LatestValueWriter<UInt16>!
     private var screenObserver: NSObjectProtocol?
     private let keyTap = MediaKeyTap()
+    private let dragMonitor = WindowDragMonitor()
     private let hud = HUD()
     private var trustTimer: Timer?
     private var follower: BrightnessFollower
@@ -78,6 +87,7 @@ final class MonitorModel: ObservableObject {
         lastInput = defaults.string(forKey: Keys.lastInput).flatMap(Input.init(rawValue:))
         inputConfig = InputConfig.decodeOrDefault(defaults.data(forKey: Keys.inputConfig))
         keysEnabled = defaults.object(forKey: Keys.keysEnabled) as? Bool ?? true
+        splitEnabled = defaults.object(forKey: Keys.splitEnabled) as? Bool ?? true
         let storedOffset = defaults.integer(forKey: Keys.syncOffset)
         follower = BrightnessFollower(offset: storedOffset)
         syncOffset = storedOffset
@@ -95,7 +105,7 @@ final class MonitorModel: ObservableObject {
         refresh()
 
         keyTap.model = self
-        if keysEnabled && !accessibilityTrusted { Accessibility.prompt() }
+        if (keysEnabled || splitEnabled) && !accessibilityTrusted { Accessibility.prompt() }
         recheckAccessibility()
         // Resuming after a relaunch keeps the stored offset: the LG isn't read yet, so there is
         // nothing to capture, and the first poll once it answers applies the offset.
@@ -287,8 +297,10 @@ final class MonitorModel: ObservableObject {
         }
     }
 
+    /// Starts or stops everything that needs Accessibility: the key tap and the screen split.
     private func updateKeyTap() {
         if keysEnabled && accessibilityTrusted { keyTap.start() } else { keyTap.stop() }
+        if splitEnabled && accessibilityTrusted { dragMonitor.start() } else { dragMonitor.stop() }
     }
 
     /// Unknown maximum (never read, or reported as 0): the keys stay with macOS rather than guess.

@@ -8,6 +8,7 @@ struct SettingsView: View {
         Form {
             InputsSection()
             KeyboardSection()
+            WindowsSection()
             BrightnessSyncSection()
             GeneralSection()
         }
@@ -98,6 +99,24 @@ private struct KeyboardSection: View {
         }
         // The grant can change in System Settings while the app runs.
         .onAppear { model.recheckAccessibility() }
+    }
+}
+
+// MARK: Windows
+
+private struct WindowsSection: View {
+    @EnvironmentObject private var model: MonitorModel
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $model.splitEnabled) {
+                Text("Screen split (drag a window onto the LG)")
+                Text("While you drag a window on the LG, two halves appear. Drop it on one to fill that half.")
+            }
+            .toggleStyle(.switch)
+        } header: {
+            Text("Windows")
+        }
     }
 }
 

@@ -23,4 +23,16 @@ public enum SnapZones {
     public static func axPoint(fromCocoa p: CGPoint, primaryScreenHeight: CGFloat) -> CGPoint {
         CGPoint(x: p.x, y: primaryScreenHeight - p.y)
     }
+
+    /// The minimum move, in points, before a window counts as dragged rather than clicked.
+    public static let dragThreshold: CGFloat = 4
+
+    /// True once a window is really being dragged on the LG. Resizing from the left or top edge
+    /// moves the position too, so a drag also needs the size to be unchanged.
+    public static func isWindowDrag(startPosition: CGPoint, startSize: CGSize,
+                                    position: CGPoint, size: CGSize, pointerOnLG: Bool) -> Bool {
+        guard pointerOnLG, size == startSize else { return false }
+        let moved = hypot(position.x - startPosition.x, position.y - startPosition.y)
+        return moved > dragThreshold
+    }
 }

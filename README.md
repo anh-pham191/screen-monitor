@@ -47,13 +47,28 @@ Settings › Keyboard › Control brightness and volume keys.
 
 ### Accessibility permission
 
-The keys need Accessibility permission. On first launch macOS asks for it; or open Settings ›
-Keyboard and press **Open System Settings**, then switch on **LG Control** under Privacy &
+The keys (and the screen split) need Accessibility permission. On first launch macOS asks for
+it; or open Settings › Keyboard and press **Open System Settings**, then switch on **LG Control** under Privacy &
 Security › Accessibility. The app notices within a second; no restart needed. Without the
 permission everything else works and the keys stay with macOS.
 
 Quit MonitorControl (or any other app that grabs the media keys) first: two key taps fight over
 the same presses.
+
+## Screen split
+
+Drag any window onto the LG and two halves appear on it. Drop the window with the pointer over
+one and it fills that half. On the MacBook screen nothing changes. Turn it off in Settings ›
+Windows › Screen split (drag a window onto the LG).
+
+It needs the same Accessibility permission as the keys. It only counts a real drag: the window
+has to move more than 4 pt without changing size, so resizing from the left or top edge never
+shows the halves. LG Control's own windows are left alone.
+
+**macOS tiling:** macOS 15 and later tile windows too, when you drag one to a screen edge or hold
+⌥ while dragging. Both can show at once near the LG's edges. If they get in each other's way,
+turn off System Settings › Desktop & Dock › Windows › **Drag windows to screen edges to tile**
+(and **Hold ⌥ key while dragging windows to tile**), or turn off the screen split here.
 
 ## Follow MacBook brightness
 
