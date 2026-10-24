@@ -1,11 +1,9 @@
 import Foundation
 
 public enum KeepAwakePreset: Int, CaseIterable, Sendable {
-    case min15 = 15, min30 = 30, hour1 = 60, hour2 = 120, hour5 = 300, hour10 = 600
+    case hour1 = 60, hour2 = 120, hour4 = 240, hour6 = 360, hour8 = 480, hour10 = 600
 
-    public var label: String {
-        rawValue < 60 ? "\(rawValue) min" : "\(rawValue / 60) h"
-    }
+    public var label: String { "\(rawValue / 60)h" }
 
     public var duration: TimeInterval { TimeInterval(rawValue * 60) }
 }
@@ -114,6 +112,20 @@ public enum KeepAwakePolicy {
         guard remaining >= 60 else { return nil }
         let total = Int(ceil(remaining / 60))
         return total >= 60 ? (total / 60, total % 60) : (0, total)
+    }
+
+    /// Rounds up, like `split`, so the clock only reads "0:00" once the time is really up.
+    public static func clockText(_ remaining: TimeInterval) -> String {
+        let s = max(0, Int(ceil(remaining)))
+        let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
+        let ss = sec < 10 ? "0\(sec)" : "\(sec)"
+        if h > 0 { return "\(h):\(m < 10 ? "0\(m)" : "\(m)"):\(ss)" }
+        return "\(m):\(ss)"
+    }
+
+    public static func ringProgress(remaining: TimeInterval, total: TimeInterval) -> Double {
+        guard total > 0 else { return 0 }
+        return min(max(remaining / total, 0), 1)
     }
 
     public static func clampThreshold(_ v: Int) -> Int {

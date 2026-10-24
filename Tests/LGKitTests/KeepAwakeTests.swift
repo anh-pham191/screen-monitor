@@ -104,9 +104,26 @@ private func decision(_ hold: Bool, _ reason: KeepAwakeReason?, clear: Bool = fa
 // MARK: - Presets
 
 @Test func presetMinutesAndLabels() {
-    #expect(KeepAwakePreset.allCases.map(\.rawValue) == [15, 30, 60, 120, 300, 600])
-    #expect(KeepAwakePreset.allCases.map(\.label) == ["15 min", "30 min", "1 h", "2 h", "5 h", "10 h"])
-    #expect(KeepAwakePreset.allCases.map(\.duration) == [900, 1800, 3600, 7200, 18000, 36000])
+    #expect(KeepAwakePreset.allCases.map(\.rawValue) == [60, 120, 240, 360, 480, 600])
+    #expect(KeepAwakePreset.allCases.map(\.label) == ["1h", "2h", "4h", "6h", "8h", "10h"])
+    #expect(KeepAwakePreset.allCases.map(\.duration) == [3600, 7200, 14400, 21600, 28800, 36000])
+}
+
+// MARK: - Clock and ring
+
+@Test(arguments: [
+    (3582.0, "59:42"), (7182.0, "1:59:42"), (36000.0, "10:00:00"), (59.2, "1:00"),
+    (0.0, "0:00"), (-5.0, "0:00"), (600.0, "10:00"),
+])
+func clockText(remaining: TimeInterval, expected: String) {
+    #expect(KeepAwakePolicy.clockText(remaining) == expected)
+}
+
+@Test(arguments: [
+    (1800.0, 3600.0, 0.5), (4000.0, 3600.0, 1.0), (-1.0, 3600.0, 0.0), (5.0, 0.0, 0.0),
+])
+func ringProgress(remaining: TimeInterval, total: TimeInterval, expected: Double) {
+    #expect(KeepAwakePolicy.ringProgress(remaining: remaining, total: total) == expected)
 }
 
 // MARK: - Text

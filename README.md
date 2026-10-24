@@ -96,8 +96,9 @@ from the private DisplayServices framework (read only; nothing is written to the
 ## Keep Awake
 
 The Keep Awake section of the menu bar panel stops both the screens and the Mac going to sleep
-while you're not touching them. Pick a preset (`15 min`, `30 min`, `1 h`, `2 h`, `5 h` or
-`10 h`) and a card shows the time left and when it ends, with **Stop** beside it. Picking another
+while you're not touching them. Pick a preset (`1h`, `2h`, `4h`, `6h`, `8h` or
+`10h`) and a card shows a ring that empties as time runs out, a running clock and when it ends,
+with a small ✕ to stop. Picking another
 preset starts again from now. While it runs, the menu bar icon shows the time left, such as
 `1h 15m`.
 

@@ -27,9 +27,11 @@ final class KeepAwakeModel: ObservableObject {
     }
     @Published var batteryThreshold: Int {
         didSet {
+            // Assigning inside didSet doesn't call didSet again, so the clamped value has to be
+            // persisted and evaluated here rather than on a second pass that never comes.
             let clamped = KeepAwakePolicy.clampThreshold(batteryThreshold)
-            if clamped != batteryThreshold { batteryThreshold = clamped; return }
-            defaults.set(batteryThreshold, forKey: Keys.threshold)
+            if clamped != batteryThreshold { batteryThreshold = clamped }
+            defaults.set(clamped, forKey: Keys.threshold)
             evaluate()
         }
     }
@@ -38,10 +40,13 @@ final class KeepAwakeModel: ObservableObject {
     private let monitor: MonitorModel
     private let defaults = UserDefaults.standard
     private var ps5Since: Date?
-    private var tick: Timer?
+    // nonisolated(unsafe) so the nonisolated deinit can clean up: an isolated deinit needs a
+    // newer runtime than macOS 14. They're only written on the main actor, and deinit runs
+    // once nothing else holds the model, so there's no concurrent access.
+    nonisolated(unsafe) private var tick: Timer?
     private var inputSink: AnyCancellable?
-    private var wakeObserver: NSObjectProtocol?
-    private var terminateObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var wakeObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var terminateObserver: NSObjectProtocol?
 
     init(monitor: MonitorModel) {
         self.monitor = monitor
@@ -66,6 +71,18 @@ final class KeepAwakeModel: ObservableObject {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.shutDown() }
         }
+    }
+
+    deinit {
+        // A timer must be invalidated on the thread whose run loop it was added to (main).
+        // Timer isn't Sendable, but invalidate is the only call made on it and that's on main.
+        if let timer = tick {
+            nonisolated(unsafe) let t = timer
+            if Thread.isMainThread { t.invalidate() } else { DispatchQueue.main.async { t.invalidate() } }
+        }
+        if let o = wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
+        if let o = terminateObserver { NotificationCenter.default.removeObserver(o) }
+        // `assertion` releases itself in its own deinit.
     }
 
     func start(_ preset: KeepAwakePreset) {
@@ -102,6 +119,8 @@ final class KeepAwakeModel: ObservableObject {
         if d.clearTimer { clearTimer() }
         let nextStop = KeepAwakeState.nextLastStop(current: lastStop, decision: d)
         if nextStop != lastStop { lastStop = nextStop }
+        // A running timer's remaining time differs every tick, so this publishes once a second
+        // and the card's clock and ring move with it.
         if d != decision { decision = d }
         let badge = KeepAwakeState.badgeText(for: d)
         if badge != badgeText { badgeText = badge }

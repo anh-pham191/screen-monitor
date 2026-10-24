@@ -85,7 +85,6 @@ private struct MenuRow: View {
 
 private struct KeepAwakeSection: View {
     @EnvironmentObject private var keepAwake: KeepAwakeModel
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 3)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -97,7 +96,8 @@ private struct KeepAwakeSection: View {
                 }
             }
             card
-            LazyVGrid(columns: columns, spacing: 6) {
+            // One row of six: the panel is 300 pt wide, so labels stay short and nothing wraps.
+            HStack(spacing: 4) {
                 ForEach(KeepAwakePreset.allCases, id: \.self) { preset in
                     PresetButton(label: preset.label, on: keepAwake.activePreset == preset) {
                         keepAwake.start(preset)
@@ -113,33 +113,64 @@ private struct KeepAwakeSection: View {
     @ViewBuilder private var card: some View {
         switch keepAwake.decision.reason {
         case .timer(let remaining) where keepAwake.decision.hold:
-            HStack(spacing: 10) {
-                Image(systemName: "clock").font(.system(size: 18)).foregroundStyle(Color.accentColor)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(KeepAwakePolicy.longText(remaining))
-                        .font(.system(size: 16, weight: .semibold)).monospacedDigit()
-                    if let end = keepAwake.timerEnd {
-                        Text("Until \(end.formatted(Date.FormatStyle().hour().minute()))")
-                            .font(.system(size: 11)).foregroundStyle(.secondary)
-                    }
-                }
-                Spacer()
-                Button("Stop") { keepAwake.stop() }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+            let total = keepAwake.activePreset?.duration ?? 0
+            RingCard(progress: KeepAwakePolicy.ringProgress(remaining: remaining, total: total),
+                     title: KeepAwakePolicy.clockText(remaining),
+                     subtitle: keepAwake.timerEnd.map {
+                         "until " + $0.formatted(Date.FormatStyle().hour().minute())
+                     } ?? "",
+                     stop: keepAwake.stop)
         case .ps5 where keepAwake.decision.hold:
-            HStack(spacing: 10) {
-                Image(systemName: "gamecontroller").font(.system(size: 18)).foregroundStyle(Color.accentColor)
-                Text("Keeping awake while the PS5 is on").font(.system(size: 13))
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+            // No stop button: the PS5 rule is a setting, and the card can't switch it off.
+            RingCard(progress: 1, title: "PS5", subtitle: "while the PS5 is on", stop: nil)
         default:
             EmptyView()
+        }
+    }
+}
+
+private struct RingCard: View {
+    let progress: Double
+    let title: String
+    let subtitle: String
+    let stop: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().stroke(Color.accentColor.opacity(0.2), lineWidth: 4)
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                Image(systemName: "clock")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+            .frame(width: 44, height: 44)
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 22, weight: .semibold))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+            if let stop {
+                Button(action: stop) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .frame(width: 28, height: 28)
+                        .background(.quaternary, in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Stop Keep Awake")
+            }
         }
     }
 }
@@ -152,14 +183,13 @@ private struct PresetButton: View {
     var body: some View {
         Button(action: action) {
             Text(label)
-                .font(.system(size: 12))
+                .font(.system(size: 11, weight: on ? .semibold : .regular))
+                .lineLimit(1)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
+                .padding(.vertical, 5)
                 .foregroundStyle(on ? Color.white : Color.primary)
-                .background(on ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.background),
+                .background(on ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary),
                             in: RoundedRectangle(cornerRadius: 6))
-                .overlay(RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(on ? Color.accentColor : Color.secondary.opacity(0.4)))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
