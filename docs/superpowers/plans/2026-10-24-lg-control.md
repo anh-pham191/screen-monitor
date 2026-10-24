@@ -16,7 +16,7 @@
 - `Package.swift`: `// swift-tools-version: 6.0`, `platforms: [.macOS(.v14)]`, `swiftLanguageModes: [.v5]`.
 - Tests run **only** through `scripts/test.sh`; plain `swift test` cannot find the `Testing` module with Command Line Tools.
 - DDC wire constants (verified on the hardware): I2C chip address `0x37`, data address `0x51`, checksum seed `0x6E ^ 0x51`. The LG needs a 50 ms wait between a get request and reading the reply, and 3 attempts for a read. Each set is written twice, 20 ms apart.
-- Input values: Mac/HDMI 1 = `0x11`, PS5/HDMI 2 = `0x12` (both verified), Windows/USB-C = `0x1B` (default, not verified, and changeable in Settings).
+- Input values: Mac/HDMI 1 = `0x11`, PS5/HDMI 2 = `0x12` (both verified), Windows/USB-C = `0x0F` (default: the LG advertises inputs `11 12 0F 00` in its capabilities string, read on 2026-10-24, and 0x0F is the only non-HDMI one; not yet switch-tested, and changeable in Settings).
 - Do not validate the checksum on DDC replies (the reply checksum convention was not verified on this LG). Validate the reply's structure instead.
 - Never call the private API on the main thread. All DDC I/O runs on one serial background `DispatchQueue`.
 - UI labels, exactly: `Mac (HDMI 1)`, `PS5 (HDMI 2)`, `Windows (USB-C)`, `Brightness`, `Contrast`, `Volume`, `Mute`, `Details`, `LG not connected`, `Retry`, `Launch at login`, `Open LG Control`, `Quit`.
@@ -281,7 +281,7 @@ Create the service with `IOAVServiceCreateWithService(kCFAllocatorDefault, s)?.t
 **Interfaces:**
 - Produces:
   - `public enum Input: String, CaseIterable, Codable, Sendable { case mac, ps5, windows }` with `public var label: String`, giving `"Mac (HDMI 1)"`, `"PS5 (HDMI 2)"` and `"Windows (USB-C)"`
-  - `public struct InputConfig: Codable, Equatable, Sendable { public var mac: UInt16 = 0x11; public var ps5: UInt16 = 0x12; public var windows: UInt16 = 0x1B; public init() {}; public func value(for: Input) -> UInt16; public mutating func set(_ value: UInt16, for: Input); public static func parseHex(_ text: String) -> UInt16?; public static func formatHex(_ value: UInt16) -> String }`
+  - `public struct InputConfig: Codable, Equatable, Sendable { public var mac: UInt16 = 0x11; public var ps5: UInt16 = 0x12; public var windows: UInt16 = 0x0F; public init() {}; public func value(for: Input) -> UInt16; public mutating func set(_ value: UInt16, for: Input); public static func parseHex(_ text: String) -> UInt16?; public static func formatHex(_ value: UInt16) -> String }`
   - `public final class LatestValueWriter<Value: Sendable>: @unchecked Sendable` with `public init(queue: DispatchQueue, interval: TimeInterval, write: @escaping (Value) -> Void)` and `public func submit(_ value: Value)`
   - `public enum WindowPlacement { public static func shouldMoveToBuiltIn(target: Input, windowOnExternal: Bool, builtInAvailable: Bool) -> Bool }`
 
@@ -290,7 +290,7 @@ Create the service with `IOAVServiceCreateWithService(kCFAllocatorDefault, s)?.t
 ```swift
 @Test func defaultInputValues() {
     let c = InputConfig()
-    #expect([c.value(for: .mac), c.value(for: .ps5), c.value(for: .windows)] == [0x11, 0x12, 0x1B])
+    #expect([c.value(for: .mac), c.value(for: .ps5), c.value(for: .windows)] == [0x11, 0x12, 0x0F])
     #expect(Input.allCases.map(\.label) == ["Mac (HDMI 1)", "PS5 (HDMI 2)", "Windows (USB-C)"])
 }
 @Test func parseHexAcceptsCommonForms() {
@@ -303,7 +303,7 @@ Create the service with `IOAVServiceCreateWithService(kCFAllocatorDefault, s)?.t
     for bad in ["", "  ", "zz", "0x", "10000", "-1", "1 2"] { #expect(InputConfig.parseHex(bad) == nil, "\(bad)") }
 }
 @Test func inputConfigRoundTripsJSON() throws {
-    var c = InputConfig(); c.set(0x0F, for: .windows)
+    var c = InputConfig(); c.set(0x1B, for: .windows)
     #expect(try JSONDecoder().decode(InputConfig.self, from: JSONEncoder().encode(c)) == c)
 }
 @Test func coalescesRapidSubmits() {
@@ -435,6 +435,272 @@ There's no unit test, because the reader is a thin wrapper over the IORegistry a
   - M6: Details shows `LG ULTRAFINE`, `DEMO12345678`, `HDMI`, `3840 × 2160`.
   - M7: The `Launch at login` toggle shows up in System Settings › General › Login Items.
   - M9: While the LG shows the PS5, the main window (now on the MacBook screen) still shows the three input buttons, even if it says `LG not connected`.
-  - M8: The USB-C button switches to Windows. If it doesn't, try `0x0F`, `0x10` or a value from `Inputs advertised by monitor` in Settings.
+  - M8: The USB-C button switches to Windows. If it doesn't, try `0x1B`, `0x10` or a value from `Inputs advertised by monitor` in Settings.
 
 - [ ] **Step 7: Commit** with the message `feat: add LG Control SwiftUI app, menu bar and packaging`.
+
+---
+
+## Scope extension: Tasks 7–9 (replace MonitorControl and LG Screen Split)
+
+These implement spec goals 6–8 (the section "Scope extension (2026-10-24)"). Each one builds on Task 6's `MonitorModel` and app. Extra global constraints:
+
+- Accessibility permission comes from `AXIsProcessTrustedWithOptions`. When it's missing, Settings shows `Accessibility permission needed for keyboard keys and screen split` with an `Open System Settings` button (`x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility`). Features that need it stay off; nothing crashes.
+- New UserDefaults keys: `keysEnabled` (Bool, default true), `syncEnabled` (Bool, default false), `syncOffset` (Int, default 0), `splitEnabled` (Bool, default true).
+- New UI labels, exactly: `Control brightness and volume keys`, `Follow MacBook brightness`, `Offset`, `Screen split (drag a window onto the LG)`.
+
+### Task 7: Stable signing, Accessibility, media keys and the on-screen indicator
+
+**Files:**
+- Create: `scripts/make-signing-cert.sh`, `Sources/LGKit/MediaKeys.swift`, `Sources/LGControl/MediaKeyTap.swift`, `Sources/LGControl/HUD.swift`, `Sources/LGControl/AudioOutput.swift`, `Sources/LGControl/Accessibility.swift`
+- Modify: `scripts/build-app.sh`, `Sources/LGControl/MonitorModel.swift`, `Sources/LGControl/SettingsView.swift`, `README.md`
+- Test: `Tests/LGKitTests/MediaKeysTests.swift`
+
+**Interfaces:**
+- Produces (in LGKit):
+  - `public enum MediaKey: Equatable, Sendable { case brightnessUp, brightnessDown, volumeUp, volumeDown, mute }`
+  - `public struct MediaKeyEvent: Equatable, Sendable { public let key: MediaKey; public let isDown: Bool; public let isRepeat: Bool; public init(key:isDown:isRepeat:); public static func decode(subtype: Int16, data1: Int) -> MediaKeyEvent?; public static func decode(keyCode: Int64, isDown: Bool, isRepeat: Bool) -> MediaKeyEvent? }`. The second decoder exists because Apple Silicon MacBook keyboards send the brightness keys as plain keyDown/keyUp events, not NX_SYSDEFINED.
+  - `public enum KeyRoute: Equatable, Sendable { case lg, passThrough }`
+  - `public enum KeyRouter { public static func route(_ key: MediaKey, pointerOnLG: Bool, lgIsSoundOutput: Bool, lgConnected: Bool) -> KeyRoute }`
+  - `public enum Stepper { public static func step(current: UInt16, maximum: UInt16, up: Bool, fine: Bool) -> UInt16 }`
+- Consumes: `MonitorModel` (Task 6). `MonitorModel` gains `func handleMediaKey(_ event: MediaKeyEvent, fine: Bool)`, which routes through the same `LatestValueWriter`s as the sliders.
+
+- [ ] **Step 0: Spike the real key path (listen-only, read-only).** Build a throwaway `lgctl keylog` subcommand, or a scratch binary that isn't committed. It installs a **listen-only** `CGEvent.tapCreate` for systemDefined, keyDown and keyUp, and prints the type, keycode, subtype and data1. The controller asks Anh to press brightness down/up, mute, volume down/up and one letter key, and the log is recorded in the report. If the real codes differ from the 144/145 and NX 0/1/7 expectations, report NEEDS_CONTEXT with the log before going on. The tap needs Accessibility (or Input Monitoring) for the terminal running it; if it's denied, report NEEDS_CONTEXT.
+
+- [ ] **Step 1: Write the failing tests**:
+
+```swift
+// NX_SYSDEFINED media keys: subtype 8; keyCode = (data1 & 0xFFFF0000) >> 16; state = (data1 & 0xFF00) >> 8 (0x0A down, 0x0B up); repeat = data1 & 0x1
+func data1(_ code: Int, down: Bool, rep: Bool = false) -> Int { (code << 16) | ((down ? 0x0A : 0x0B) << 8) | (rep ? 1 : 0) }
+
+@Test func decodesMediaKeys() {
+    #expect(MediaKeyEvent.decode(subtype: 8, data1: data1(2, down: true)) == MediaKeyEvent(key: .brightnessUp, isDown: true, isRepeat: false))
+    #expect(MediaKeyEvent.decode(subtype: 8, data1: data1(3, down: false))?.key == .brightnessDown)
+    #expect(MediaKeyEvent.decode(subtype: 8, data1: data1(0, down: true, rep: true)) == MediaKeyEvent(key: .volumeUp, isDown: true, isRepeat: true))
+    #expect(MediaKeyEvent.decode(subtype: 8, data1: data1(1, down: true))?.key == .volumeDown)
+    #expect(MediaKeyEvent.decode(subtype: 8, data1: data1(7, down: true))?.key == .mute)
+}
+@Test func decodesBrightnessKeyCodes() {
+    // Apple Silicon built-in keyboards: keyDown/keyUp with keycode 144 = brightness up, 145 = brightness down
+    #expect(MediaKeyEvent.decode(keyCode: 144, isDown: true, isRepeat: false) == MediaKeyEvent(key: .brightnessUp, isDown: true, isRepeat: false))
+    #expect(MediaKeyEvent.decode(keyCode: 145, isDown: false, isRepeat: false)?.key == .brightnessDown)
+    #expect(MediaKeyEvent.decode(keyCode: 0, isDown: true, isRepeat: false) == nil)     // the "a" key: not ours
+    #expect(MediaKeyEvent.decode(keyCode: 122, isDown: true, isRepeat: false) == nil)   // F1 in F-key mode: not ours
+}
+@Test func ignoresOtherSystemEvents() {
+    #expect(MediaKeyEvent.decode(subtype: 7, data1: data1(2, down: true)) == nil)   // not a media-key subtype
+    #expect(MediaKeyEvent.decode(subtype: 8, data1: data1(16, down: true)) == nil)  // play/pause: not ours
+}
+@Test func routesKeysByPointerAndSoundOutput() {
+    #expect(KeyRouter.route(.brightnessUp, pointerOnLG: true, lgIsSoundOutput: false, lgConnected: true) == .lg)
+    #expect(KeyRouter.route(.brightnessUp, pointerOnLG: false, lgIsSoundOutput: true, lgConnected: true) == .passThrough)
+    #expect(KeyRouter.route(.volumeUp, pointerOnLG: false, lgIsSoundOutput: true, lgConnected: true) == .lg)
+    #expect(KeyRouter.route(.mute, pointerOnLG: true, lgIsSoundOutput: false, lgConnected: true) == .passThrough)
+    #expect(KeyRouter.route(.brightnessUp, pointerOnLG: true, lgIsSoundOutput: true, lgConnected: false) == .passThrough)
+}
+@Test func stepsLikeMacOS() {
+    #expect(Stepper.step(current: 26, maximum: 100, up: true, fine: false) == 31)    // 16 steps of 6.25: next boundary 31.25 → 31
+    #expect(Stepper.step(current: 25, maximum: 100, up: true, fine: false) == 31)
+    #expect(Stepper.step(current: 26, maximum: 100, up: false, fine: false) == 25)
+    #expect(Stepper.step(current: 98, maximum: 100, up: true, fine: false) == 100)
+    #expect(Stepper.step(current: 0, maximum: 100, up: false, fine: false) == 0)
+    #expect(Stepper.step(current: 26, maximum: 100, up: true, fine: true) == 27)     // 64 steps: 1.5625 → next multiple
+    #expect(Stepper.step(current: 0, maximum: 0, up: true, fine: false) == 0)       // unknown max: no-op
+    #expect(Stepper.step(current: 31, maximum: 100, up: true, fine: false) == 38)   // must not stick on a rounded boundary
+    #expect(Stepper.step(current: 38, maximum: 100, up: false, fine: false) == 31)
+    var v: UInt16 = 0; for _ in 0..<16 { v = Stepper.step(current: v, maximum: 100, up: true, fine: false) }
+    #expect(v == 100)                                                                // 16 presses go from 0 to 100
+}
+```
+
+- [ ] **Step 2: Run the tests to verify they fail.** Run `scripts/test.sh`. Expected: compile errors.
+
+- [ ] **Step 3: Implement the LGKit pieces.**
+  - `decode` accepts only subtype 8 and key codes 0, 1, 2, 3 and 7. Anything else returns `nil`.
+  - `KeyRouter`: when `!lgConnected`, everything passes through. Brightness keys follow `pointerOnLG`; volume and mute keys follow `lgIsSoundOutput`.
+  - `Stepper` works with step boundaries `b(k) = round(k × maximum / n)` for k = 0…n (n = 16, or 64 when `fine`).
+    - Up: return the smallest `b(k)` strictly greater than `current`, or `maximum` if there is none.
+    - Down: return the largest `b(k)` strictly less than `current`, or 0 if there is none.
+    - `maximum == 0` returns `current`.
+    - A rounded-boundary formula like `floor(current/unit)+1` gets stuck: it maps 31 back to 31. Don't use it.
+
+- [ ] **Step 4: Run the tests to verify they pass.** Run `scripts/test.sh`.
+
+- [ ] **Step 5: Implement the app pieces.**
+  - `MediaKeyTap`:
+    - Create a session-level `CGEvent.tapCreate` for `NSEvent.EventType.systemDefined` (raw event type 14) at `.headInsertEventTap`. Decode the event with `NSEvent(cgEvent:)` (`subtype.rawValue`, `data1`).
+    - For `.lg` routes, consume key-down and repeat events by returning `nil`, and call `MonitorModel.handleMediaKey` on the main actor. Consume the matching key-up as well. Everything else is passed back unchanged.
+    - "Fine" is when `event.modifierFlags` contains both `.option` and `.shift`.
+    - The tap is re-enabled on `tapDisabledByTimeout` and `tapDisabledByUserInput`.
+    - It only starts when Accessibility is trusted and `keysEnabled` is on. Toggling either one starts or stops it.
+  - `pointerOnLG` is true when `NSEvent.mouseLocation` lies in the frame of the non-built-in `NSScreen`.
+  - `AudioOutput.lgIsSoundOutput()`: the CoreAudio default output device (`kAudioHardwarePropertyDefaultOutputDevice`) has a `kAudioObjectPropertyName` equal to the LG's EDID name (`LG ULTRAFINE`), or a name containing `LG`. On this machine it's `LG ULTRAFINE`.
+  - `HUD`:
+    - One borderless, non-activating `NSPanel` at `.statusBar` level that ignores mouse events and is centred on the LG about 140 pt above its bottom edge.
+    - Its content is SwiftUI on an `NSVisualEffectView` (`.hudWindow` material), 200 × 200 pt, corner radius 18: an SF Symbol (`sun.max.fill`, `speaker.wave.2.fill` or `speaker.slash.fill`) above a 16-segment bar.
+    - It shows for 1.5 s after the last update, then fades out over 0.2 s.
+    - Mute toggles 0x8D (1 ↔ 2). Volume keys while muted unmute first.
+  - `Accessibility`: `isTrusted()` uses `AXIsProcessTrusted()`, and `prompt()` uses `AXIsProcessTrustedWithOptions` with the prompt option. Settings shows the permission row from the extra global constraints, plus the `Control brightness and volume keys` toggle.
+  - `make-signing-cert.sh`:
+    - Generate a self-signed certificate named `LG Control Local Signing` with OpenSSL: RSA 2048, 10 years, `extendedKeyUsage=codeSigning`, `keyUsage=digitalSignature`, `basicConstraints=CA:false`.
+    - Import it into the login keychain as a `.p12` with `security import … -T /usr/bin/codesign`, then run `security add-trusted-cert -p codeSign -k ~/Library/Keychains/login.keychain-db`. This step prompts Anh for a password once.
+    - If the identity already exists (`security find-identity -v -p codesigning | grep "LG Control Local Signing"`), exit 0 with a message.
+  - `build-app.sh`: sign with `LG Control Local Signing` when `security find-identity -p codesigning` lists it; otherwise sign ad hoc and print `warning: ad-hoc signed; Accessibility permission will reset on every build — run scripts/make-signing-cert.sh once`.
+  - README: add the one-time certificate step, how to grant Accessibility, and how the keys behave.
+
+- [ ] **Step 6: Verify.**
+  - Run `scripts/test.sh` (expect it to pass) and `scripts/build-app.sh` (expect exit 0).
+  - The controller then runs the manual checks with Anh:
+    - K1: With the pointer on the LG, brightness keys change the LG and show the HUD on the LG.
+    - K2: With the pointer on the MacBook, brightness keys change the MacBook as normal.
+    - K3: Volume keys change the LG, and mute works.
+    - K4: After a rebuild, Accessibility is still granted (with the certificate installed).
+
+- [ ] **Review amendments (binding; they override conflicting text above):**
+  - **Tap:** `CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap, eventsOfInterest:` a mask of systemDefined (14), keyDown and keyUp`)`.
+    - Pass `self` through `userInfo` with `Unmanaged`, and add `CFMachPortCreateRunLoopSource` to the main run loop.
+    - In the callback, handle `.tapDisabledByTimeout` and `.tapDisabledByUserInput` FIRST by re-enabling the tap and returning the event.
+    - For keyDown and keyUp, read `.keyboardEventKeycode` and `.keyboardEventAutorepeat` and use the keycode decoder.
+    - For systemDefined only, build `NSEvent(cgEvent:)` and read `subtype` and `data1`. Never read `subtype` for any other type: NSEvent raises an exception.
+    - "Fine" comes from `event.flags` containing `.maskAlternate` and `.maskShift`.
+  - Remember which key-downs were consumed (by key), and consume the matching key-up even if the pointer has moved since.
+  - When the reading's maximum is 0 (unknown), pass the key through.
+  - `handleMediaKey` updates the published `brightness`/`volume` straight away (converting `Double` ⇄ `UInt16` by rounding), so repeated presses build on each other. Then it writes through the slider's `LatestValueWriter`.
+  - Accessibility: while it isn't trusted, poll `AXIsProcessTrusted()` every 1 s and start the tap once it is.
+  - `pointerOnLG` uses `NSMouseInRect(NSEvent.mouseLocation, lgScreen.frame, false)`.
+  - `AudioOutput` matches the device name exactly against the LG's EDID name (`DisplayDetails.edid?.name`, falling back to `LG ULTRAFINE`). There is no loose "contains LG" match.
+  - HUD panel:
+    - style mask `[.borderless, .nonactivatingPanel]`
+    - `collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]`
+    - `hidesOnDeactivate = false` and `ignoresMouseEvents = true`
+    - shown with `orderFrontRegardless()`, never `makeKeyAndOrderFront`
+  - `make-signing-cert.sh`:
+    - Use `/usr/bin/openssl` (LibreSSL), with `-addext` for the three extensions. Homebrew OpenSSL 3 builds `.p12` files that `security import` rejects.
+    - Use a random non-empty temporary password for `-passout`, and pass the same value to `security import -P`.
+    - Then run `security set-key-partition-list -S apple-tool:,apple:,codesign: -s ~/Library/Keychains/login.keychain-db`, which prompts once, so codesign doesn't prompt on every build.
+    - Delete the temporary key, certificate and `.p12` with a `trap`.
+    - Check whether it already exists with `security find-certificate -c "LG Control Local Signing"`, not `find-identity -v`.
+  - `build-app.sh` signs by the identity's SHA-1 hash, taken from the first `security find-identity -p codesigning | grep "LG Control Local Signing"` line, so a duplicate name isn't ambiguous. It signs the whole `.app`.
+  - README: run `scripts/make-signing-cert.sh` once; quit MonitorControl, because two key taps fight; and the "toggle Launch at login after reinstall" note only applies to ad-hoc builds.
+
+- [ ] **Step 7: Commit** with the message `feat: control the LG with the brightness and volume keys`.
+
+### Task 8: Follow MacBook brightness
+
+**Files:**
+- Create: `Sources/LGKit/BrightnessSync.swift`, `Sources/LGControl/BuiltInBrightness.swift`
+- Modify: `Sources/LGControl/MonitorModel.swift`, `Sources/LGControl/SettingsView.swift`, `Sources/LGControl/ContentView.swift`
+- Test: `Tests/LGKitTests/BrightnessSyncTests.swift`
+
+**Interfaces:**
+- Produces: `public enum BrightnessSync { public static func target(builtIn: Double, offset: Int, maximum: UInt16) -> UInt16; public static func offset(lg: UInt16, builtIn: Double, maximum: UInt16) -> Int; public static func isMeaningfulChange(from old: Double, to new: Double) -> Bool }`. `builtIn` is 0…1. `target` = clamp(round(builtIn × maximum) + offset, 0, maximum), with `offset` in the same units as `maximum`. `isMeaningfulChange` is `abs(new - old) >= 0.01`.
+- Consumes: `MonitorModel.setBrightness` (Task 6) and `Stepper` (Task 7). `MonitorModel` gains `syncEnabled: Bool` and `syncOffset: Int`, both published and persisted.
+
+- [ ] **Step 1: Write the failing tests**:
+
+```swift
+@Test func targetFollowsBuiltInWithOffset() {
+    #expect(BrightnessSync.target(builtIn: 0.5, offset: 0, maximum: 100) == 50)
+    #expect(BrightnessSync.target(builtIn: 0.5, offset: -24, maximum: 100) == 26)
+    #expect(BrightnessSync.target(builtIn: 0.95, offset: 20, maximum: 100) == 100)   // clamped
+    #expect(BrightnessSync.target(builtIn: 0.05, offset: -20, maximum: 100) == 0)    // clamped
+}
+@Test func offsetFromManualChange() {
+    #expect(BrightnessSync.offset(lg: 26, builtIn: 0.5, maximum: 100) == -24)
+    #expect(BrightnessSync.offset(lg: 50, builtIn: 0.5, maximum: 100) == 0)
+}
+@Test func ignoresTinyChanges() {
+    #expect(!BrightnessSync.isMeaningfulChange(from: 0.465, to: 0.47))
+    #expect(BrightnessSync.isMeaningfulChange(from: 0.465, to: 0.48))
+}
+```
+
+- [ ] **Step 2: Run the tests to verify they fail.** Run `scripts/test.sh`. Expected: compile errors.
+
+- [ ] **Step 3: Implement `BrightnessSync`, then run the tests to verify they pass.**
+
+- [ ] **Step 4: Implement the app pieces.**
+  - `BuiltInBrightness.read() -> Double?` uses `DisplayServicesGetBrightness`, loaded with `dlopen` and `dlsym` from `/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices` (verified on this Mac), for the display where `CGDisplayIsBuiltin != 0`. It returns `nil` when there's no built-in display or the call fails.
+  - `MonitorModel`:
+    - While `syncEnabled` is on, a 0.5 s `Timer` reads the built-in brightness. A meaningful change sets the LG to `target(...)` through the brightness writer.
+    - A manual LG brightness change (slider, menu bar or keys) while sync is on sets `syncOffset = offset(...)` and persists it.
+    - Turning sync on applies the target straight away.
+  - Settings gets a `Follow MacBook brightness` toggle and a read-only `Offset` value with a `Reset` button that sets 0. The main window shows a small `Following MacBook` caption under Brightness while sync is on.
+
+- [ ] **Step 5: Verify.**
+  - Run `scripts/test.sh` and `scripts/build-app.sh`.
+  - Manual check S1 with Anh: with sync on, changing the MacBook brightness moves the LG within about 1 s.
+  - Manual check S2: dragging the LG slider and then changing the MacBook brightness keeps the new relative difference.
+
+- [ ] **Review amendments (binding; they override conflicting text above):**
+  - **Sync writes:** they go through a private `applySync(target:)` that writes through the brightness writer and updates the published `brightness`, and **never recomputes `syncOffset`**. Only the slider, the menu bar and the keys (the manual paths) recompute the offset. Otherwise, clamping wears the offset away (built-in 0.95 with offset +20 would become 5).
+  - **Change detection:** compare each poll with the built-in value that was last *applied*, not with the previous poll, so a slow auto-brightness ramp still arrives.
+  - **The private call:**
+    - Its signature is `@convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32`, with 0 meaning success.
+    - The value is a `Float`; convert it to `Double`.
+    - The read is a cheap local call. It's exempt from the "no private API on the main thread" constraint, which is about DDC I/O. The DDC write still goes through the DDC queue.
+  - **Turning sync on:** first set `syncOffset = offset(lg: current, builtIn: now)`, so the LG doesn't jump, then start polling.
+  - **`Reset`:** sets the offset to 0 and immediately applies the target.
+  - Add a test: `BrightnessSync.target(builtIn: 0.95, offset: 20, maximum: 100) == 100`, and `offset` is unchanged by a sync write. That second part is a design rule; cover it in MonitorModel if it's practical, otherwise state it in the report.
+
+- [ ] **Step 6: Commit** with the message `feat: let the LG follow the MacBook brightness`.
+
+### Task 9: Screen split by dragging (halves)
+
+**Files:**
+- Create: `Sources/LGKit/SnapZones.swift`, `Sources/LGControl/WindowDragMonitor.swift`, `Sources/LGControl/SnapOverlay.swift`
+- Modify: `Sources/LGControl/LGControlApp.swift`, `Sources/LGControl/SettingsView.swift`, `README.md`
+- Test: `Tests/LGKitTests/SnapZonesTests.swift`
+
+**Interfaces:**
+- Produces: `public enum SnapZones { public static func halves(of visibleFrame: CGRect) -> [CGRect]; public static func zoneIndex(at point: CGPoint, in zones: [CGRect]) -> Int?; public static func axRect(fromCocoa rect: CGRect, primaryScreenHeight: CGFloat) -> CGRect }`
+  - `halves` returns [left, right], using Cocoa coordinates (bottom-left origin). The left half's width is `floor(w/2)`, and the right half takes the rest.
+  - `axRect` flips to the top-left origin that the Accessibility API uses: `y' = primaryScreenHeight - rect.maxY`. Also add `public static func axPoint(fromCocoa p: CGPoint, primaryScreenHeight: CGFloat) -> CGPoint`, which returns `(p.x, primaryScreenHeight - p.y)`. `primaryScreenHeight` is always `NSScreen.screens[0].frame.height` (the screen at origin 0,0), never `NSScreen.main`.
+
+- [ ] **Step 1: Write the failing tests**:
+
+```swift
+@Test func halvesSplitVisibleFrame() {
+    let f = CGRect(x: 1512, y: 0, width: 1921, height: 1055)
+    #expect(SnapZones.halves(of: f) == [CGRect(x: 1512, y: 0, width: 960, height: 1055), CGRect(x: 2472, y: 0, width: 961, height: 1055)])
+}
+@Test func findsZoneUnderPointer() {
+    let zones = SnapZones.halves(of: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+    #expect(SnapZones.zoneIndex(at: CGPoint(x: 10, y: 500), in: zones) == 0)
+    #expect(SnapZones.zoneIndex(at: CGPoint(x: 1900, y: 500), in: zones) == 1)
+    #expect(SnapZones.zoneIndex(at: CGPoint(x: 3000, y: 500), in: zones) == nil)
+}
+@Test func convertsToAccessibilityCoordinates() {
+    #expect(SnapZones.axRect(fromCocoa: CGRect(x: 0, y: 0, width: 960, height: 1055), primaryScreenHeight: 1080) == CGRect(x: 0, y: 25, width: 960, height: 1055))
+    #expect(SnapZones.axPoint(fromCocoa: CGPoint(x: 100, y: 1000), primaryScreenHeight: 1080) == CGPoint(x: 100, y: 80))
+}
+```
+
+- [ ] **Step 2: Run the tests to verify they fail.** Run `scripts/test.sh`. Expected: compile errors.
+
+- [ ] **Step 3: Implement `SnapZones`, then run the tests to verify they pass.**
+
+- [ ] **Step 4: Implement the app pieces.**
+  - `WindowDragMonitor` (runs only when Accessibility is trusted and `splitEnabled` is on):
+    - It uses `NSEvent.addGlobalMonitorForEvents` for `.leftMouseDown`, `.leftMouseDragged` and `.leftMouseUp`.
+    - **Mouse down:** use `AXUIElementCopyElementAtPosition` on the system-wide element, with the pointer converted to Accessibility coordinates, to find the element under the pointer. Walk `kAXParentAttribute` up to the element whose role is `kAXWindowRole`. Record its `kAXPositionAttribute`. Ignore this app's own windows (compare the pid).
+    - **Drag:** once the window's position has moved more than 4 pt from the recorded one (it's really being dragged, not resized) and the pointer is on the LG, show the overlay and highlight `zoneIndex`.
+    - **Mouse up:** if there's a highlighted zone, set `kAXPositionAttribute` and then `kAXSizeAttribute` to the zone's `axRect`, then hide the overlay. A failed Accessibility call is logged and ignored.
+  - `SnapOverlay`: one borderless, click-through `NSPanel` covering the LG's `visibleFrame` at `.floating` level. It draws two rounded zones with an 8 pt inset, a translucent `controlAccentColor` fill at 0.15, and the highlighted zone at 0.35 with a 2 pt border.
+  - Settings gets the `Screen split (drag a window onto the LG)` toggle, and the README gets the macOS tiling note.
+
+- [ ] **Step 5: Verify.**
+  - Run `scripts/test.sh` and `scripts/build-app.sh`.
+  - Manual check P1 with Anh: dragging a Finder or Safari window on the LG shows two zones, and dropping it on the right snaps it to the right half.
+  - Manual check P2: dragging on the MacBook screen shows nothing.
+  - Manual check P3: this app's own window doesn't trigger the zones.
+
+- [ ] **Review amendments (binding; they override conflicting text above):**
+  - Call `AXUIElementSetMessagingTimeout(systemWide, 0.1)`, and use the same 0.1 s timeout on each window element. A hung app must never freeze LG Control.
+  - On mouse down, try `kAXWindowAttribute` on the hit element first, then walk the parents.
+  - Record both `kAXPositionAttribute` and `kAXSizeAttribute`. It counts as a drag only when the position has moved more than 4 pt **and** the size is unchanged; resizing from the left or top edge moves the position too.
+  - During a drag, read the window position at most every 50 ms.
+  - On drop, set the size, then the position, then the size again, so a window coming from a smaller screen isn't clamped.
+  - `SnapOverlay` uses the same panel settings as Task 7's HUD (non-activating, all Spaces, `orderFrontRegardless`, ignores mouse events).
+
+- [ ] **Step 6: Commit** with the message `feat: snap windows to LG halves by dragging`.

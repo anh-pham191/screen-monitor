@@ -14,7 +14,7 @@ This is a personal tool for one Mac. It will never ship on the App Store (it use
 - DDC/CI works through `IOAVService` (`DCPAVServiceProxy`, `Location = External`), I2C chip address `0x37`, data address `0x51`.
 - Reads verified: brightness `0x10` (26/100), contrast `0x12` (70/100), volume `0x62` (12/100), mute `0x8D` (2 = not muted), input `0x60` (returns 0 — **LG does not report the current input usefully**).
 - Input switching verified with the standard VCP `0x60`: HDMI 2 = `0x12`, HDMI 1 = `0x11`. **Switching back to HDMI 1 from the Mac works while the LG is showing HDMI 2.**
-- USB-C value not verified. Default `0x1B` (MCCS USB-C); must be changeable without code changes.
+- USB-C value not switch-tested. The LG advertises inputs `11 12 0F 00` (read 2026-10-24), so the default is `0x0F`; it must be changeable without code changes.
 
 ## Goals
 
@@ -46,3 +46,22 @@ This is a personal tool for one Mac. It will never ship on the App Store (it use
 - Swift Testing for unit tests, run through `scripts/test.sh` (wraps the Command Line Tools framework flags).
 - Swift language mode 5 to avoid strict-concurrency friction with IOKit and private-API calls.
 - Because the LG doesn't report its input, the app shows the **last input it switched to** (persisted), not a live reading.
+
+## Scope extension (2026-10-24): replace MonitorControl and the LG Mac apps
+
+Anh's ultimate goal: LG Control replaces MonitorControl and any LG monitor app on this Mac. Anh uses, and v1 must include:
+
+6. **Keyboard brightness and volume keys** (MonitorControl). The brightness keys adjust the display **under the mouse pointer**: on the LG, the app takes the key and changes the LG; on the MacBook screen, the key passes through to macOS untouched. The volume and mute keys go to the LG only when the LG is the current sound output (verified: the LG is the default output device today); otherwise they pass through. Each key press shows an on-screen indicator on the LG.
+7. **Follow MacBook brightness** (MonitorControl sync). When on, the LG's brightness follows the built-in screen's brightness (keys, auto-brightness, Control Centre) plus an offset. Changing the LG by hand while sync is on updates the offset rather than fighting it. Verified: the built-in brightness is readable through `DisplayServicesGetBrightness` (0.465 on 2026-10-24).
+8. **Screen split by dragging** (LG Screen Split). While any app's window is dragged on the LG, two zones (left half, right half) appear. Dropping the window in a zone snaps it to that half of the LG.
+
+Non-goals stay as listed, plus: picture modes, firmware updates, layouts other than halves, keyboard snapping, and the screen split on the MacBook screen.
+
+### Decisions (Claude's calls)
+
+- The key capture and the screen split need macOS **Accessibility** permission. The app explains why and links to System Settings when permission is missing. Everything else works without it.
+- macOS ties Accessibility permission to the app's code signature, and an ad-hoc signature changes on every build. So a one-time script creates a local self-signed code-signing certificate, and the build signs with it. Permission (and Launch at login) then survives rebuilds.
+- The on-screen indicator is the app's own small HUD, styled like the macOS one (icon plus a 16-segment bar). The private OSD framework is not used.
+- Key steps: 16 steps over the full range, as macOS uses. ⌥⇧ plus a key gives quarter-steps (64), as on macOS.
+- Sync polls the built-in brightness every 0.5 s and ignores changes under 1 %.
+- macOS's own "drag windows to screen edges to tile" can double-snap with the screen split. The README suggests turning it off; the app doesn't change system settings.
