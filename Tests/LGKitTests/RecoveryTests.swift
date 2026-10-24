@@ -96,3 +96,24 @@ private let lgFrame = CGRect(x: 1512, y: -300, width: 2560, height: 1440)
                                            currentIsLG: isLG, currentIsBuiltIn: builtIn) == expected, "\(bits)")
     }
 }
+
+// MARK: AudioRestore.lgWasOutput (recorded when leaving the Mac)
+
+@Test func leavingWhileTheLGIsTheOutputRecordsIt() {
+    for fromMac in [true, false] {
+        for pending in [true, false] {
+            #expect(AudioRestore.lgWasOutput(previous: false, currentIsLG: true, leavingFromMac: fromMac, restorePending: pending))
+        }
+    }
+}
+@Test func leavingTheMacWithAnotherOutputClearsIt() {
+    #expect(!AudioRestore.lgWasOutput(previous: true, currentIsLG: false, leavingFromMac: true, restorePending: false))
+}
+@Test func leavingOneOtherInputForAnotherKeepsIt() {
+    #expect(AudioRestore.lgWasOutput(previous: true, currentIsLG: false, leavingFromMac: false, restorePending: false))
+    #expect(!AudioRestore.lgWasOutput(previous: false, currentIsLG: false, leavingFromMac: false, restorePending: false))
+}
+@Test func leavingTheMacAgainWhileARestoreIsPendingKeepsIt() {
+    // Back on the Mac for under 10 s: macOS still has the sound on the MacBook, but the LG was the output.
+    #expect(AudioRestore.lgWasOutput(previous: true, currentIsLG: false, leavingFromMac: true, restorePending: true))
+}

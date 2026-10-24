@@ -27,12 +27,12 @@ enum WindowShuffler {
     static func moveAllWindowsToBuiltIn() {
         pendingRestore?.invalidate()
         pendingRestore = nil
+        guard WindowMover.builtInScreen() != nil else { return }
+        // Our own windows go through AppKit: an AX request to our own process is answered on the
+        // main thread, which is the one waiting for it, so it would just time out.
+        WindowMover.moveAppWindowsToBuiltInScreen()
+        guard Accessibility.isTrusted() else { return }
         guard let builtIn = WindowMover.builtInScreen() else { return }
-        guard Accessibility.isTrusted() else {
-            // Without Accessibility only our own windows can be moved, and there is nothing to restore.
-            WindowMover.moveAppWindowsToBuiltInScreen()
-            return
-        }
         guard let lg = MediaKeyTap.lgScreen(), let primary = NSScreen.screens.first?.frame.height else { return }
         let lgFrame = SnapZones.axRect(fromCocoa: lg.frame, primaryScreenHeight: primary)
         let destination = SnapZones.axRect(fromCocoa: builtIn.visibleFrame, primaryScreenHeight: primary)
@@ -42,16 +42,15 @@ enum WindowShuffler {
         // that belong on the LG.
         let alreadyMoved = moved
         for app in NSWorkspace.shared.runningApplications
-        where app.activationPolicy == .regular || app.processIdentifier == ownPID {
+        where app.activationPolicy == .regular && app.processIdentifier != ownPID {
             let pid = app.processIdentifier
             let element = AXUIElementCreateApplication(pid)
             AXUIElementSetMessagingTimeout(element, AXWindow.timeout)
             guard let windows: [AXUIElement] = AXWindow.attribute(kAXWindowsAttribute, of: element) else { continue }
             for window in windows {
                 AXUIElementSetMessagingTimeout(window, AXWindow.timeout)
-                if let minimised: Bool = AXWindow.attribute(kAXMinimizedAttribute, of: window), minimised { continue }
-                // A full-screen window owns its own Space on the LG; resizing it would break it.
-                if let fullScreen: Bool = AXWindow.attribute("AXFullScreen", of: window), fullScreen { continue }
+                // Minimised windows are out of sight anyway; a full-screen one owns its own Space on the LG.
+                if isMinimisedOrFullScreen(window) { continue }
                 guard let frame = AXWindow.frame(of: window), WindowRelocation.isOn(frame, screen: lgFrame) else { continue }
                 AXWindow.setFrame(WindowRelocation.target(for: frame, from: lgFrame, to: destination), of: window)
                 if !alreadyMoved.contains(where: { CFEqual($0.window, window) }) {
@@ -95,10 +94,18 @@ enum WindowShuffler {
     private static func restoreNow() {
         for entry in moved {
             // A closed window, or an app that quit, no longer reports a position.
+            // Minimised or made full screen while away: Anh moved it on purpose, so leave it.
             guard NSRunningApplication(processIdentifier: entry.pid) != nil,
-                  AXWindow.position(of: entry.window) != nil else { continue }
+                  AXWindow.position(of: entry.window) != nil,
+                  !isMinimisedOrFullScreen(entry.window) else { continue }
             AXWindow.setFrame(entry.frame, of: entry.window)
         }
         moved = []
+    }
+
+    private static func isMinimisedOrFullScreen(_ window: AXUIElement) -> Bool {
+        let minimised: Bool = AXWindow.attribute(kAXMinimizedAttribute, of: window) ?? false
+        let fullScreen: Bool = AXWindow.attribute("AXFullScreen", of: window) ?? false
+        return minimised || fullScreen
     }
 }

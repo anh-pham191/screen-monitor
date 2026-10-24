@@ -289,6 +289,8 @@ final class MonitorModel: ObservableObject {
                     }
                     self.lastInput = input
                 } else {
+                    // The LG never left the Mac, so the moved windows belong back on it now.
+                    if input != .mac { WindowShuffler.restoreWindows() }
                     self.refresh()
                 }
             }
@@ -301,13 +303,12 @@ final class MonitorModel: ObservableObject {
     /// non-Mac input for another keeps what was recorded when the Mac was left: by then macOS has
     /// already fallen back to the MacBook speakers.
     private func recordSoundOutput() {
+        lgWasSoundOutput = AudioRestore.lgWasOutput(previous: lgWasSoundOutput,
+                                                    currentIsLG: AudioOutput.lgIsSoundOutput(lgName: lgName),
+                                                    leavingFromMac: lastInput == .mac,
+                                                    restorePending: audioRestoreTimer != nil)
         audioRestoreTimer?.invalidate()
         audioRestoreTimer = nil
-        if AudioOutput.lgIsSoundOutput(lgName: lgName) {
-            lgWasSoundOutput = true
-        } else if lastInput == .mac {
-            lgWasSoundOutput = false
-        }
     }
 
     /// The LG's audio device comes back a moment after the switch, so poll for it for a while.
@@ -326,12 +327,13 @@ final class MonitorModel: ObservableObject {
                 let restore = AudioRestore.shouldRestore(lgWasOutput: self.lgWasSoundOutput,
                                                          lgDeviceAvailable: device != nil,
                                                          currentIsLG: currentIsLG, currentIsBuiltIn: currentIsBuiltIn)
-                if let device, restore { AudioOutput.setDefaultOutput(device) }
+                // A failed set leaves it unsettled, so the next tick tries again within the 10 s.
+                let restored = restore && device.map(AudioOutput.setDefaultOutput) == true
                 // Done once the sound is sorted one way or another: restored, macOS went back to the
                 // LG by itself, Anh picked another output, or 10 s passed without the LG appearing.
                 // No default device at all is macOS mid-change, not a choice.
                 let userPicked = !currentIsLG && !currentIsBuiltIn && AudioOutput.defaultOutputName() != nil
-                let settled = restore || currentIsLG || userPicked
+                let settled = restored || currentIsLG || userPicked
                 guard settled || attempts >= 20 else { return }
                 timer.invalidate()
                 self.audioRestoreTimer = nil
