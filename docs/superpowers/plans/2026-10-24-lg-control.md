@@ -833,3 +833,5 @@ Anh's feedback: dropping a window in the middle of the LG must not snap it. Snap
 - WindowDragMonitor shows a single preview of the targeted half only while the pointer is at an edge, and snaps on drop only then;
 - SnapOverlay shows one preview rect;
 - the copy changes to "Drag a window to the left or right edge of the LG to snap it to that half."
+
+**Task 15 status: dropped (Anh, 2026-10-24).** The screen split stays as is. Use macOS edge tiling if you need edge-only snapping.
