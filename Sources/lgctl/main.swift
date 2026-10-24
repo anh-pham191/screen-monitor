@@ -9,7 +9,7 @@ func fail(_ message: String, status: Int32) -> Never {
 func hex(_ text: String) -> UInt8? { UInt8(text, radix: 16) }
 
 let args = Array(CommandLine.arguments.dropFirst())
-let usage = "usage: lgctl read <hex> [--raw] | set <hex> <hex> | caps"
+let usage = "usage: lgctl read <hex> [--raw] | set <hex> <hex> | caps | info"
 
 guard let command = args.first else { fail(usage, status: 2) }
 
@@ -49,6 +49,19 @@ case ("caps", 1):
     } catch {
         fail("\(error)", status: 1)
     }
+case ("info", 1):
+    guard let details = DisplayDetailsReader.read() else { fail("LG not connected", status: 1) }
+    if let edid = details.edid {
+        print("name: \(edid.name ?? "unknown")")
+        print("manufacturer: \(edid.manufacturerID)")
+        print("product code: \(edid.productCode)")
+        print("serial: \(edid.serialString ?? String(edid.serialNumber))")
+        print("manufactured: week \(edid.week), \(edid.year)")
+        print("size: \(edid.widthCm) × \(edid.heightCm) cm")
+    }
+    print("connection: \(details.connection ?? "unknown")")
+    print("resolution: \(details.pixelWidth) × \(details.pixelHeight) px, looks like \(details.pointWidth) × \(details.pointHeight)")
+    print("refresh: \(details.refreshHz.map { "\(Int($0.rounded())) Hz" } ?? "unknown")")
 default:
     fail(usage, status: 2)
 }
