@@ -34,6 +34,17 @@ final class MonitorModel: ObservableObject {
         }
     }
     @Published private(set) var accessibilityTrusted = Accessibility.isTrusted()
+    @Published var syncEnabled: Bool {
+        didSet {
+            guard syncEnabled != oldValue else { return }
+            defaults.set(syncEnabled, forKey: Keys.syncEnabled)
+            updateSync(turningOn: syncEnabled)
+        }
+    }
+    /// In the LG's brightness units. Mirrors `follower.offset`, which is the source of truth.
+    @Published private(set) var syncOffset: Int {
+        didSet { defaults.set(syncOffset, forKey: Keys.syncOffset) }
+    }
     /// The LG's EDID name, which is also its CoreAudio device name. Cached so a key press never
     /// walks the IORegistry.
     private(set) var lgName = MonitorModel.defaultLGName
@@ -42,6 +53,8 @@ final class MonitorModel: ObservableObject {
         static let lastInput = "lastInput"
         static let inputConfig = "inputConfig"
         static let keysEnabled = "keysEnabled"
+        static let syncEnabled = "syncEnabled"
+        static let syncOffset = "syncOffset"
     }
 
     private static let defaultLGName = "LG ULTRAFINE"
@@ -57,12 +70,18 @@ final class MonitorModel: ObservableObject {
     private let keyTap = MediaKeyTap()
     private let hud = HUD()
     private var trustTimer: Timer?
+    private var follower: BrightnessFollower
+    private var syncTimer: Timer?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         lastInput = defaults.string(forKey: Keys.lastInput).flatMap(Input.init(rawValue:))
         inputConfig = InputConfig.decodeOrDefault(defaults.data(forKey: Keys.inputConfig))
         keysEnabled = defaults.object(forKey: Keys.keysEnabled) as? Bool ?? true
+        let storedOffset = defaults.integer(forKey: Keys.syncOffset)
+        follower = BrightnessFollower(offset: storedOffset)
+        syncOffset = storedOffset
+        syncEnabled = defaults.bool(forKey: Keys.syncEnabled)
 
         brightnessWriter = makeWriter(VCP.brightness)
         contrastWriter = makeWriter(VCP.contrast)
@@ -78,6 +97,9 @@ final class MonitorModel: ObservableObject {
         keyTap.model = self
         if keysEnabled && !accessibilityTrusted { Accessibility.prompt() }
         recheckAccessibility()
+        // Resuming after a relaunch keeps the stored offset: the LG isn't read yet, so there is
+        // nothing to capture, and the first poll once it answers applies the offset.
+        if syncEnabled { startSyncTimer() }
     }
 
     private func makeWriter(_ code: UInt8) -> LatestValueWriter<UInt16> {
@@ -135,9 +157,15 @@ final class MonitorModel: ObservableObject {
 
     // MARK: Writing
 
+    /// The manual path (slider, menu bar, keys). While following the MacBook, the new difference
+    /// becomes the offset. Sync writes go through `applySync` instead, which never touches it.
     func setBrightness(_ value: Double) {
         brightness = value
-        brightnessWriter.submit(UInt16(value.rounded()))
+        let wire = UInt16(value.rounded())
+        brightnessWriter.submit(wire)
+        guard syncEnabled else { return }
+        follower.manualChange(lg: wire, builtIn: BuiltInBrightness.read(), maximum: syncMaximum)
+        publishOffset()
     }
 
     func setContrast(_ value: Double) {
@@ -182,6 +210,62 @@ final class MonitorModel: ObservableObject {
                 }
             }
         }
+    }
+
+    // MARK: Following the MacBook
+
+    /// Zero while the LG isn't answering, which makes the follower write nothing.
+    private var syncMaximum: UInt16 {
+        guard connected else { return 0 }
+        return raw[VCP.brightness]?.maximum ?? 0
+    }
+
+    private func updateSync(turningOn: Bool) {
+        guard turningOn else {
+            syncTimer?.invalidate()
+            syncTimer = nil
+            return
+        }
+        // Capture the current difference first so turning on doesn't make the LG jump.
+        let write = follower.enable(lg: Stepper.wireValue(brightness), builtIn: BuiltInBrightness.read(),
+                                    maximum: syncMaximum)
+        publishOffset()
+        if let write, write != Stepper.wireValue(brightness) { applySync(target: write) }
+        startSyncTimer()
+    }
+
+    private func startSyncTimer() {
+        guard syncTimer == nil else { return }
+        // The built-in read is a cheap local call, so polling on the main thread is fine; the DDC
+        // write still goes through the writer on the DDC queue.
+        let timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.pollBuiltIn() }
+        }
+        timer.tolerance = 0.1
+        syncTimer = timer
+    }
+
+    private func pollBuiltIn() {
+        guard syncEnabled,
+              let write = follower.poll(builtIn: BuiltInBrightness.read(), maximum: syncMaximum) else { return }
+        applySync(target: write)
+    }
+
+    /// Sets the offset to 0 and, while following, applies the plain MacBook level straight away.
+    func resetSyncOffset() {
+        let write = follower.reset(builtIn: syncEnabled ? BuiltInBrightness.read() : nil, maximum: syncMaximum)
+        publishOffset()
+        if let write { applySync(target: write) }
+    }
+
+    /// Never recomputes the offset: a clamped write would otherwise wear it away.
+    private func applySync(target: UInt16) {
+        brightness = Double(target)
+        brightnessWriter.submit(target)
+    }
+
+    private func publishOffset() {
+        if syncOffset != follower.offset { syncOffset = follower.offset }
     }
 
     // MARK: Keys

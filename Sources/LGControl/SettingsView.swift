@@ -8,6 +8,7 @@ struct SettingsView: View {
         Form {
             InputsSection()
             KeyboardSection()
+            BrightnessSyncSection()
             GeneralSection()
         }
         .formStyle(.grouped)
@@ -97,6 +98,35 @@ private struct KeyboardSection: View {
         }
         // The grant can change in System Settings while the app runs.
         .onAppear { model.recheckAccessibility() }
+    }
+}
+
+// MARK: Brightness
+
+private struct BrightnessSyncSection: View {
+    @EnvironmentObject private var model: MonitorModel
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $model.syncEnabled) {
+                Text("Follow MacBook brightness")
+                Text("The LG keeps the difference it has when you turn this on. Changing the LG yourself sets a new difference.")
+            }
+            .toggleStyle(.switch)
+            LabeledContent("Offset") {
+                HStack(spacing: 10) {
+                    Text(Self.format(model.syncOffset)).monospacedDigit().foregroundStyle(.secondary)
+                    Button("Reset") { model.resetSyncOffset() }
+                        .disabled(model.syncOffset == 0)
+                }
+            }
+        } header: {
+            Text("Brightness")
+        }
+    }
+
+    private static func format(_ offset: Int) -> String {
+        offset > 0 ? "+\(offset)" : offset < 0 ? "−\(-offset)" : "0"
     }
 }
 

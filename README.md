@@ -55,6 +55,21 @@ permission everything else works and the keys stay with macOS.
 Quit MonitorControl (or any other app that grabs the media keys) first: two key taps fight over
 the same presses.
 
+## Follow MacBook brightness
+
+Settings › Brightness › **Follow MacBook brightness** makes the LG track the MacBook's built-in
+display, including auto-brightness. Twice a second the app reads the MacBook level and, when it
+has moved by at least 1%, sets the LG to that level plus an offset.
+
+- **Turning it on** keeps the LG where it is: the current difference becomes the offset.
+- **Changing the LG yourself** (slider, menu bar or brightness keys) sets a new offset, so the
+  LG keeps the new difference from then on.
+- **Offset** shows the difference in the LG's brightness units. **Reset** sets it to 0 and moves
+  the LG to the MacBook level straight away.
+
+The main window shows `Following MacBook` under Brightness while it's on. The MacBook level comes
+from the private DisplayServices framework (read only; nothing is written to the MacBook).
+
 ## Tests
 
 ```sh

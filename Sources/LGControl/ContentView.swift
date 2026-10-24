@@ -128,8 +128,13 @@ private struct PictureBox: View {
     var body: some View {
         GroupBox {
             VStack(spacing: 14) {
-                ValueSlider(title: "Brightness", value: model.brightness, maximum: model.brightnessMax,
-                            lowIcon: "sun.min", highIcon: "sun.max", set: model.setBrightness)
+                VStack(alignment: .leading, spacing: 4) {
+                    ValueSlider(title: "Brightness", value: model.brightness, maximum: model.brightnessMax,
+                                lowIcon: "sun.min", highIcon: "sun.max", set: model.setBrightness)
+                    if model.syncEnabled {
+                        Text("Following MacBook").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
                 ValueSlider(title: "Contrast", value: model.contrast, maximum: model.contrastMax,
                             set: model.setContrast)
             }
