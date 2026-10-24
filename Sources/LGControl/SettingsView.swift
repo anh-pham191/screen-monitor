@@ -7,6 +7,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             InputsSection()
+            KeyboardSection()
             GeneralSection()
         }
         .formStyle(.grouped)
@@ -68,6 +69,34 @@ private struct InputValueField: View {
         invalid = false
         model.inputConfig.set(value, for: input)
         showStored()
+    }
+}
+
+// MARK: Keyboard
+
+private struct KeyboardSection: View {
+    @EnvironmentObject private var model: MonitorModel
+
+    var body: some View {
+        Section {
+            if !model.accessibilityTrusted {
+                HStack {
+                    Text("Accessibility permission needed for keyboard keys and screen split")
+                        .foregroundStyle(.orange)
+                    Spacer()
+                    Button("Open System Settings") { Accessibility.openSettings() }
+                }
+            }
+            Toggle(isOn: $model.keysEnabled) {
+                Text("Control brightness and volume keys")
+                Text("Brightness keys change the LG while the pointer is on it. Volume and mute change the LG while it’s the sound output. Hold ⌥⇧ for smaller steps.")
+            }
+            .toggleStyle(.switch)
+        } header: {
+            Text("Keyboard")
+        }
+        // The grant can change in System Settings while the app runs.
+        .onAppear { model.recheckAccessibility() }
     }
 }
 

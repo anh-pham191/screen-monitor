@@ -26,11 +26,25 @@ final class MonitorModel: ObservableObject {
     @Published private(set) var capabilitiesError: String?
     @Published private(set) var refreshing = false
     @Published private(set) var loadingCapabilities = false
+    @Published var keysEnabled: Bool {
+        didSet {
+            defaults.set(keysEnabled, forKey: Keys.keysEnabled)
+            if keysEnabled && !accessibilityTrusted { Accessibility.prompt() }
+            updateKeyTap()
+        }
+    }
+    @Published private(set) var accessibilityTrusted = Accessibility.isTrusted()
+    /// The LG's EDID name, which is also its CoreAudio device name. Cached so a key press never
+    /// walks the IORegistry.
+    private(set) var lgName = MonitorModel.defaultLGName
 
     private enum Keys {
         static let lastInput = "lastInput"
         static let inputConfig = "inputConfig"
+        static let keysEnabled = "keysEnabled"
     }
+
+    private static let defaultLGName = "LG ULTRAFINE"
 
     private let defaults: UserDefaults
     private let queue = DispatchQueue(label: "com.anhpham.lgcontrol.ddc")
@@ -40,11 +54,15 @@ final class MonitorModel: ObservableObject {
     private var contrastWriter: LatestValueWriter<UInt16>!
     private var volumeWriter: LatestValueWriter<UInt16>!
     private var screenObserver: NSObjectProtocol?
+    private let keyTap = MediaKeyTap()
+    private let hud = HUD()
+    private var trustTimer: Timer?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         lastInput = defaults.string(forKey: Keys.lastInput).flatMap(Input.init(rawValue:))
         inputConfig = InputConfig.decodeOrDefault(defaults.data(forKey: Keys.inputConfig))
+        keysEnabled = defaults.object(forKey: Keys.keysEnabled) as? Bool ?? true
 
         brightnessWriter = makeWriter(VCP.brightness)
         contrastWriter = makeWriter(VCP.contrast)
@@ -56,6 +74,10 @@ final class MonitorModel: ObservableObject {
             MainActor.assumeIsolated { self?.refresh() }
         }
         refresh()
+
+        keyTap.model = self
+        if keysEnabled && !accessibilityTrusted { Accessibility.prompt() }
+        recheckAccessibility()
     }
 
     private func makeWriter(_ code: UInt8) -> LatestValueWriter<UInt16> {
@@ -78,7 +100,10 @@ final class MonitorModel: ObservableObject {
             let controller = transport.map { DDCController(transport: $0) }
             self.ddc = controller
             let readout = controller.map { c in MonitorReadout.read { try c.read($0) } }
+            // Not DDC, but an IORegistry walk: keep it off the main thread too.
+            let name = DisplayDetailsReader.read()?.edid?.name
             DispatchQueue.main.async {
+                self.lgName = name ?? Self.defaultLGName
                 self.apply(hasTransport: transport != nil, readout: readout)
             }
         }
@@ -157,6 +182,69 @@ final class MonitorModel: ObservableObject {
                 }
             }
         }
+    }
+
+    // MARK: Keys
+
+    /// Call when Settings appears too: the grant can be revoked while the app runs.
+    func recheckAccessibility() {
+        accessibilityTrusted = Accessibility.isTrusted()
+        updateKeyTap()
+        guard !accessibilityTrusted, trustTimer == nil else { return }
+        // macOS sends no notification when Anh ticks the box, so poll until he does.
+        trustTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self, Accessibility.isTrusted() else { return }
+                timer.invalidate()
+                self.trustTimer = nil
+                self.accessibilityTrusted = true
+                self.updateKeyTap()
+            }
+        }
+    }
+
+    private func updateKeyTap() {
+        if keysEnabled && accessibilityTrusted { keyTap.start() } else { keyTap.stop() }
+    }
+
+    /// Unknown maximum (never read, or reported as 0): the keys stay with macOS rather than guess.
+    func canHandleMediaKey(_ key: MediaKey) -> Bool {
+        switch key {
+        case .brightnessUp, .brightnessDown: return (raw[VCP.brightness]?.maximum ?? 0) > 0
+        case .volumeUp, .volumeDown: return (raw[VCP.volume]?.maximum ?? 0) > 0
+        case .mute: return true
+        }
+    }
+
+    /// Updates the published value straight away so a run of presses builds on itself rather than
+    /// on a stale reading, then writes through the same rate-limited writer as the slider.
+    func handleMediaKey(_ event: MediaKeyEvent, fine: Bool) {
+        guard event.isDown else { return }
+        switch event.key {
+        case .brightnessUp, .brightnessDown:
+            guard let maximum = raw[VCP.brightness]?.maximum, maximum > 0 else { return }
+            let next = Stepper.step(current: Stepper.wireValue(brightness), maximum: maximum,
+                                    up: event.key == .brightnessUp, fine: fine)
+            setBrightness(Double(next))
+            showHUD(.brightness, level: HUDLevel.fraction(next, maximum: maximum))
+        case .volumeUp, .volumeDown:
+            guard let maximum = raw[VCP.volume]?.maximum, maximum > 0 else { return }
+            // Like macOS: a volume key while muted unmutes, then steps.
+            if muted { setMuted(false) }
+            let next = Stepper.step(current: Stepper.wireValue(volume), maximum: maximum,
+                                    up: event.key == .volumeUp, fine: fine)
+            setVolume(Double(next))
+            showHUD(.volume, level: HUDLevel.fraction(next, maximum: maximum))
+        case .mute:
+            setMuted(!muted)
+            let maximum = raw[VCP.volume]?.maximum ?? 0
+            showHUD(muted ? .muted : .volume, level: HUDLevel.fraction(Stepper.wireValue(volume), maximum: maximum))
+        }
+    }
+
+    private func showHUD(_ kind: HUD.Kind, level: Double) {
+        guard let screen = MediaKeyTap.lgScreen() else { return }
+        hud.show(kind, level: level, on: screen)
     }
 
     // MARK: Details
