@@ -705,3 +705,9 @@ func data1(_ code: Int, down: Bool, rep: Bool = false) -> Int { (code << 16) | (
   - `SnapOverlay` uses the same panel settings as Task 7's HUD (non-activating, all Spaces, `orderFrontRegardless`, ignores mouse events).
 
 - [ ] **Step 6: Commit** with the message `feat: snap windows to LG halves by dragging`.
+
+---
+
+### Task 10: Switch inputs with LG's own command (bug fix)
+
+Requirements and tests: see the brief `.superpowers/sdd/2026-10-24-lg-control/task-10-brief.md` (copied here in substance): `DDCPacket.setRequest(_:value:dataAddress:)` with seed `0x6E ^ dataAddress` (`setRequest(0xF4, value: 0x91, dataAddress: 0x50) == [0x84, 0x03, 0xF4, 0x00, 0x91, 0xDC]`); `DDCController.write(_:value:dataAddress:)`; `InputCommand { lg (0xF4 @ 0x50), standard (0x60 @ 0x51) }`; `InputConfig.command` default `.lg` with 0x90 / 0x91 / 0xD1, `defaults(for:)`, `setCommand(_:)`, lenient legacy decoding as `.standard`; `MonitorModel.switchTo` uses the command; Settings picker + footer; `lgctl set … --addr <hex>`; README. Manual check with Anh: PS5 sticks, Mac returns, USB-C (0xD1) if the Windows machine is on.

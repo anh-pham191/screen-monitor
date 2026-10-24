@@ -65,3 +65,7 @@ Non-goals stay as listed, plus: picture modes, firmware updates, layouts other t
 - Key steps: 16 steps over the full range, as macOS uses. ⌥⇧ plus a key gives quarter-steps (64), as on macOS.
 - Sync polls the built-in brightness every 0.5 s and ignores changes under 1 %.
 - macOS's own "drag windows to screen edges to tile" can double-snap with the screen split. The README suggests turning it off; the app doesn't change system settings.
+
+## Bug fix (2026-10-24 afternoon): LG's own input command
+
+Anh found that PS5 (HDMI 2) did not stick: the standard VCP 0x60 switch makes this LG go black and bounce back to the Mac, even with the app quit (so the morning "switched and came back" test was this bounce, not a working switch). LG's own command — VCP 0xF4 written to I2C data address 0x50, HDMI 1 = 0x90, HDMI 2 = 0x91 — holds the PS5 and switches back on command (verified with Anh). The app now uses LG's command by default (USB-C 0xD1, not yet verified), with Standard (VCP 0x60) selectable in Settings.
