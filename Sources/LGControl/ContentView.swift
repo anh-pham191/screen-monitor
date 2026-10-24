@@ -8,7 +8,7 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HeaderCard()
-            // Always shown: while the LG shows another input it may not answer DDC at all, and
+            // Always shown: they work even while a refresh says the LG isn't answering, and
             // these are how Anh gets it back. `switchTo` finds the transport again itself.
             VStack(alignment: .leading, spacing: 6) {
                 Text("Input").font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
@@ -169,7 +169,7 @@ private struct NotConnectedBox: View {
                 Image(systemName: "display.trianglebadge.exclamationmark")
                     .font(.system(size: 36, weight: .light)).foregroundStyle(.secondary)
                 Text("LG not connected").font(.headline)
-                Text("Brightness, contrast and volume come back when the LG answers again. It may stay quiet while it shows another input.")
+                Text("Brightness, contrast and volume come back as soon as the LG answers — LG Control keeps checking.")
                     .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     .frame(maxWidth: 320)
                 RetryButton()

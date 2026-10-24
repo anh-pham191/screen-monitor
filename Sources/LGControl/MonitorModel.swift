@@ -14,9 +14,9 @@ final class MonitorModel: ObservableObject {
     @Published private(set) var contrastMax: Double = 100
     @Published private(set) var volumeMax: Double = 100
     @Published private(set) var muted = false
-    @Published private(set) var lastInput: Input? {
-        didSet { defaults.set(lastInput?.rawValue, forKey: Keys.lastInput) }
-    }
+    /// Starts on the Mac: the app is opened there, and the LG reports input 0 whatever it shows,
+    /// so a remembered input from an earlier session (maybe a switch that bounced back) would lie.
+    @Published private(set) var lastInput: Input? = .mac
     @Published var inputConfig: InputConfig {
         didSet { defaults.set(try? JSONEncoder().encode(inputConfig), forKey: Keys.inputConfig) }
     }
@@ -61,7 +61,6 @@ final class MonitorModel: ObservableObject {
     private(set) var lgName = MonitorModel.defaultLGName
 
     private enum Keys {
-        static let lastInput = "lastInput"
         static let inputConfig = "inputConfig"
         static let keysEnabled = "keysEnabled"
         static let splitEnabled = "splitEnabled"
@@ -80,6 +79,12 @@ final class MonitorModel: ObservableObject {
     private var volumeWriter: LatestValueWriter<UInt16>!
     private var screenObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
+    private var activeObserver: NSObjectProtocol?
+    /// Refreshes that failed in a row; drives the retry back-off.
+    private var failedRefreshes = 0
+    /// Whether macOS was sending sound to the LG when it last left the Mac input.
+    private var lgWasSoundOutput = false
+    private var audioRestoreTimer: Timer?
     private var refreshCoalescer = RefreshCoalescer()
     /// One delayed refresh at a time: a burst of screen or wake notifications shares it.
     private var delayedRefresh: DispatchWorkItem?
@@ -93,7 +98,6 @@ final class MonitorModel: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        lastInput = defaults.string(forKey: Keys.lastInput).flatMap(Input.init(rawValue:))
         inputConfig = InputConfig.decodeOrDefault(defaults.data(forKey: Keys.inputConfig))
         keysEnabled = defaults.object(forKey: Keys.keysEnabled) as? Bool ?? true
         splitEnabled = defaults.object(forKey: Keys.splitEnabled) as? Bool ?? true
@@ -120,6 +124,15 @@ final class MonitorModel: ObservableObject {
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.scheduleRefresh(after: 2) }
+        }
+        // Opening the window is when Anh looks; don't make him wait for the next retry.
+        activeObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.connected else { return }
+                self.refresh()
+            }
         }
         refresh()
 
@@ -160,7 +173,11 @@ final class MonitorModel: ObservableObject {
                 self.lgName = details?.edid?.name ?? Self.defaultLGName
                 self.apply(hasTransport: transport != nil, readout: readout)
                 self.refreshing = false
-                if self.refreshCoalescer.finished() { self.refresh() }
+                if self.refreshCoalescer.finished() {
+                    self.refresh()
+                } else {
+                    self.retryIfDisconnected()
+                }
             }
         }
     }
@@ -176,6 +193,19 @@ final class MonitorModel: ObservableObject {
         }
         delayedRefresh = item
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+    }
+
+    /// The LG doesn't always post a screen change when it changes input, so one failed refresh
+    /// would otherwise leave "not connected" up for good. A delayed refresh already pending (after
+    /// a wake or a switch) does the same job, so it isn't replaced and retries never stack.
+    private func retryIfDisconnected() {
+        guard !connected else {
+            failedRefreshes = 0
+            return
+        }
+        failedRefreshes += 1
+        guard delayedRefresh == nil else { return }
+        scheduleRefresh(after: RetryPolicy.delay(afterFailures: failedRefreshes))
     }
 
     private func apply(hasTransport: Bool, readout: MonitorReadout?) {
@@ -232,11 +262,10 @@ final class MonitorModel: ObservableObject {
     }
 
     func switchTo(_ input: Input) {
-        if WindowPlacement.shouldMoveToBuiltIn(target: input,
-                                               windowOnExternal: WindowMover.isWindowOnExternal(),
-                                               builtInAvailable: WindowMover.builtInAvailable()) {
-            // Leaving the Mac input blanks the LG, so get the window somewhere visible first.
-            WindowMover.moveAppWindowsToBuiltInScreen()
+        if input != .mac { recordSoundOutput() }
+        if WindowPlacement.shouldMoveToBuiltIn(target: input, builtInAvailable: WindowMover.builtInAvailable()) {
+            // Leaving the Mac input blanks the LG, so get every window somewhere visible first.
+            WindowShuffler.moveAllWindowsToBuiltIn()
         }
         let value = inputConfig.value(for: input)
         let command = inputConfig.command
@@ -254,12 +283,62 @@ final class MonitorModel: ObservableObject {
                     // Back on the Mac input, or found again after being lost: the LG answers DDC
                     // again only once it has settled on the new input, so read it then.
                     if !self.connected || input == .mac { self.scheduleRefresh(after: 1.75) }
+                    if input == .mac {
+                        WindowShuffler.restoreWindows()
+                        self.restoreSoundOutput()
+                    }
                     self.lastInput = input
                 } else {
                     self.refresh()
                 }
             }
         }
+    }
+
+    // MARK: Sound output
+
+    /// Called before leaving the Mac input, while the LG's audio device still exists. Leaving one
+    /// non-Mac input for another keeps what was recorded when the Mac was left: by then macOS has
+    /// already fallen back to the MacBook speakers.
+    private func recordSoundOutput() {
+        audioRestoreTimer?.invalidate()
+        audioRestoreTimer = nil
+        if AudioOutput.lgIsSoundOutput(lgName: lgName) {
+            lgWasSoundOutput = true
+        } else if lastInput == .mac {
+            lgWasSoundOutput = false
+        }
+    }
+
+    /// The LG's audio device comes back a moment after the switch, so poll for it for a while.
+    private func restoreSoundOutput() {
+        audioRestoreTimer?.invalidate()
+        audioRestoreTimer = nil
+        guard lgWasSoundOutput else { return }
+        var attempts = 0
+        let timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self else { return timer.invalidate() }
+                attempts += 1
+                let device = AudioOutput.lgDeviceID(lgName: self.lgName)
+                let currentIsLG = AudioOutput.lgIsSoundOutput(lgName: self.lgName)
+                let currentIsBuiltIn = AudioOutput.currentIsBuiltIn()
+                let restore = AudioRestore.shouldRestore(lgWasOutput: self.lgWasSoundOutput,
+                                                         lgDeviceAvailable: device != nil,
+                                                         currentIsLG: currentIsLG, currentIsBuiltIn: currentIsBuiltIn)
+                if let device, restore { AudioOutput.setDefaultOutput(device) }
+                // Done once the sound is sorted one way or another: restored, macOS went back to the
+                // LG by itself, Anh picked another output, or 10 s passed without the LG appearing.
+                // No default device at all is macOS mid-change, not a choice.
+                let userPicked = !currentIsLG && !currentIsBuiltIn && AudioOutput.defaultOutputName() != nil
+                let settled = restore || currentIsLG || userPicked
+                guard settled || attempts >= 20 else { return }
+                timer.invalidate()
+                self.audioRestoreTimer = nil
+                self.lgWasSoundOutput = false
+            }
+        }
+        audioRestoreTimer = timer
     }
 
     // MARK: Following the MacBook
