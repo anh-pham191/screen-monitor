@@ -75,7 +75,7 @@ Anh found that PS5 (HDMI 2) did not stick: the standard VCP 0x60 switch makes th
 Anh wants Screen Monitor to keep the Mac and its screens awake for a chosen time, like Amphetamine, and to drop the need for a separate app.
 
 Goals:
-1. A **Keep Awake** section in the menu bar panel with presets **15 min, 30 min, 1 h, 2 h, 5 h, 10 h**. Picking one starts (or restarts) a timer. While it runs, the panel shows a live countdown ("1 h 5 min left"), the end time ("until 5:45 pm"), and a **Stop** button. No indefinite or custom durations (Anh's choice).
+1. A **Keep Awake** section in the menu bar panel with presets **15 min, 30 min, 1 h, 2 h, 5 h, 10 h**. Picking one starts (or restarts) a timer. While it runs, the panel shows a live countdown ("1 h 5 min left"), the end time on a second, smaller line ("Until 5:45 pm") — a compact card, no extra sentence (Anh), and a **Stop** button. No indefinite or custom durations (Anh's choice).
 2. While active, **both the screens and the Mac stay awake**: no display sleep, no idle system sleep. This uses public IOKit power assertions (`IOPMAssertionCreateWithName`), so it needs no permission. The assertion is always released when the timer ends, on Stop, on a stop rule, and when the app quits.
 3. The **menu bar icon shows a badge** while active: a clock symbol plus the short time left ("1h 5m", "45m", "<1m"), or "PS5" when only the PS5 rule is holding.
 4. **Auto-stop on low battery:** on battery power, when the charge falls below the threshold (default **20%**, adjustable **5–50% in steps of 5** in Settings), the timer is cancelled and nothing is held. The panel shows "Stopped: battery below 20%" until the next start. Plugged in, the rule never fires.
