@@ -825,3 +825,11 @@ Anh picked card option A and new presets after Tasks 12 and 13 were planned. The
 - **Presets row:** a single `HStack(spacing: 4)` of six equal-width buttons, 11 pt, with a filled accent background for `activePreset` and a quiet fill for the others. Drop the 3 × 2 grid.
 - **Live countdown:** the clock text changes every second, so the 1 s tick must publish `decision` or the remaining time each tick. The `badgeText` optimisation stays only for the label.
 - Use TDD for the two pure functions and the presets. Run scripts/test.sh once after the last edit, plus `swift build`. Commit with the message `feat: Keep Awake progress-ring card and new presets`.
+
+### Task 15: Screen split snaps only at the screen edges
+
+Anh's feedback: dropping a window in the middle of the LG must not snap it. Snap only when the pointer reaches the LG's left or right edge, within 6 pt, which is the Rectangle, Magnet and macOS behaviour. The full requirements and tests are in the brief `.superpowers/sdd/…/task-15-brief.md`:
+- a pure function, `SnapZones.edgeZone(at:screenFrame:threshold:)`, with tests;
+- WindowDragMonitor shows a single preview of the targeted half only while the pointer is at an edge, and snaps on drop only then;
+- SnapOverlay shows one preview rect;
+- the copy changes to "Drag a window to the left or right edge of the LG to snap it to that half."
