@@ -31,6 +31,12 @@ keychain and asks for your password (once or twice). From then on `scripts/build
 with it, and the permission survives rebuilds. Without it the build still works, signs ad hoc
 and prints a warning.
 
+## Menu bar app
+
+Screen Monitor has no Dock icon by default and opens only its menu bar icon, including at login.
+Choose Open Screen Monitor from the menu bar icon to show the window, and Quit to exit. Settings ›
+General › Show in Dock brings the Dock icon back.
+
 ## Brightness and volume keys
 
 The app can take over the normal Mac keys for the LG:

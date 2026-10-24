@@ -26,9 +26,13 @@ struct ContentView: View {
             }
             Spacer(minLength: 0)
             HStack {
-                Button("Details") { openWindow(id: "details") }
+                Button("Details") {
+                    openWindow(id: "details")
+                    AppPresentation.bringToFront()
+                }
                 Spacer()
                 SettingsLink { Image(systemName: "gearshape") }
+                    .simultaneousGesture(TapGesture().onEnded { AppPresentation.bringToFront() })
                     .help("Settings")
             }
         }

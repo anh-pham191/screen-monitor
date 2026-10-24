@@ -37,7 +37,7 @@ struct MenuBarContent: View {
             VStack(spacing: 2) {
                 MenuRow(title: "Open Screen Monitor") {
                     openWindow(id: "main")
-                    NSApp.activate()
+                    AppPresentation.bringToFront()
                 }
                 MenuRow(title: "Quit") { NSApp.terminate(nil) }
             }

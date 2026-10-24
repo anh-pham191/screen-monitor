@@ -167,9 +167,16 @@ private struct BrightnessSyncSection: View {
 private struct GeneralSection: View {
     @State private var status = SMAppService.mainApp.status
     @State private var error: String?
+    @AppStorage(DockPolicy.defaultsKey) private var showInDock = false
 
     var body: some View {
         Section("General") {
+            Toggle(isOn: $showInDock) {
+                Text("Show in Dock")
+                Text("Off keeps Screen Monitor in the menu bar only.")
+            }
+            .toggleStyle(.switch)
+            .onChange(of: showInDock) { _, on in AppPresentation.applyDockPolicy(showInDock: on) }
             Toggle(isOn: Binding(get: { status == .enabled || status == .requiresApproval }, set: setLaunchAtLogin)) {
                 Text("Launch at login")
                 Text("Keeps the menu bar icon ready after a restart.")
