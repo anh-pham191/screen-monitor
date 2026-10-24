@@ -25,7 +25,7 @@ PASS="$(/usr/bin/openssl rand -hex 16)"
   -addext "basicConstraints=CA:false"
 
 "$OPENSSL" pkcs12 -export -inkey "$TMP/key.pem" -in "$TMP/cert.pem" \
-  -out "$TMP/id.p12" -passout "pass:$PASS"
+  -out "$TMP/id.p12" -passout "pass:$PASS" -name "$NAME"
 
 security import "$TMP/id.p12" -k "$KEYCHAIN" -P "$PASS" -T /usr/bin/codesign
 
@@ -33,6 +33,9 @@ security import "$TMP/id.p12" -k "$KEYCHAIN" -P "$PASS" -T /usr/bin/codesign
 security add-trusted-cert -p codeSign -k "$KEYCHAIN" "$TMP/cert.pem"
 
 # Let codesign use the key without a prompt on every build (prompts once).
-security set-key-partition-list -S apple-tool:,apple:,codesign: -s "$KEYCHAIN"
+# Scoped by label (-l, set by -name on the .p12 above) to this key only: without it, the command
+# rewrites the partition list of every private key in the login keychain, changing which apps
+# may use Anh's other signing keys without asking.
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s -l "$NAME" "$KEYCHAIN"
 
 echo "Created signing identity '$NAME'. scripts/build-app.sh will now use it."
