@@ -15,7 +15,7 @@ fi
 OPENSSL=/usr/bin/openssl
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-PASS="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24)"
+PASS="$(/usr/bin/openssl rand -hex 16)"
 
 "$OPENSSL" req -x509 -newkey rsa:2048 -nodes -days 3650 \
   -subj "/CN=$NAME" \
