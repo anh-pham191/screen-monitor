@@ -140,9 +140,22 @@ final class MonitorModel: ObservableObject {
             WindowMover.moveAppWindowsToBuiltInScreen()
         }
         let value = inputConfig.value(for: input)
-        lastInput = input
         queue.async { [weak self] in
-            try? self?.ddc?.write(VCP.inputSource, value: value)
+            guard let self else { return }
+            let outcome = ReconnectingWrite.run(
+                current: self.ddc,
+                rediscover: { findExternalTransport().map { DDCController(transport: $0) } },
+                write: { try $0.write(VCP.inputSource, value: value) })
+            self.ddc = outcome.controller
+            DispatchQueue.main.async {
+                // Only record the input once the LG took it; otherwise the UI would claim a switch
+                // that never happened. A refresh shows the user the LG is unreachable.
+                if outcome.succeeded {
+                    self.lastInput = input
+                } else {
+                    self.refresh()
+                }
+            }
         }
     }
 
