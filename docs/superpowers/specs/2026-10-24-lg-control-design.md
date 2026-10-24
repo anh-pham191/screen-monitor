@@ -85,3 +85,8 @@ Goals:
 Non-goals: a keyboard shortcut, start at login, ⌥-click on the icon, indefinite or custom durations, "until a time", closed-lid (clamshell) mode, and notifications.
 
 Decisions (Claude's calls): there's one source of truth, a pure LGKit policy, re-evaluated every second while anything could be holding, and on input changes and settings changes. A timer start restarts from now. The battery threshold is a strict "<". The PS5 rule follows the app's `lastInput`, because the LG cannot report its input.
+
+### Keep Awake design update (Anh, after review of the mock-ups)
+- Presets are now **1h, 2h, 4h, 6h, 8h, 10h** (labels exactly as written), in ONE row of six compact buttons.
+- The active card is **option A, "Progress ring"**: a 44 pt ring that empties as time runs out (remaining / total), a large running clock (`59:42`, `1:59:42`, `10:00:00`; 22 pt semibold, monospaced digits), `until 5:40 pm` underneath (11 pt, secondary), and a small round ✕ button (28 pt, accessibility label "Stop Keep Awake") to stop. Nothing wraps.
+- The menu bar badge keeps the short form ("1h 5m", "45m", "<1m", "PS5").

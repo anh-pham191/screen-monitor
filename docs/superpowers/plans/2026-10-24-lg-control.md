@@ -801,3 +801,27 @@ Spec: the "Keep Awake (2026-10-24 evening)" section of the spec. Design: the Cla
 3. The battery rule firing while plugged in, or when the battery level is unknown.
 4. The PS5 rule outliving a switch back to the Mac.
 5. The badge text width causing the menu bar item to jitter (use monospaced digits).
+
+### Task 14: Keep Awake design A and new presets
+
+Anh picked card option A and new presets after Tasks 12 and 13 were planned. The spec section "Keep Awake design update" is binding. The Claude Design board "Keep Awake: menu bar panel and Settings" shows the final look.
+
+**Files:** Modify `Sources/LGKit/KeepAwake.swift`, `Tests/LGKitTests/KeepAwake*Tests.swift`, `Sources/LGControl/MenuBarContent.swift` (the Keep Awake section) and README.md if it lists the presets.
+
+- **Presets:** `KeepAwakePreset` becomes exactly 60, 120, 240, 360, 480 and 600 minutes, with the labels "1h", "2h", "4h", "6h", "8h" and "10h". Update its tests.
+- **New pure function** `KeepAwakePolicy.clockText(_ remaining: TimeInterval) -> String`:
+  - `s = Int(ceil(remaining))` (never negative), h = s / 3600, m = (s % 3600) / 60, sec = s % 60.
+  - When h > 0: "h:mm:ss"; otherwise "m:ss".
+  - Tests: 3582 → "59:42", 7182 → "1:59:42", 36000 → "10:00:00", 59.2 → "1:00", 0 → "0:00", −5 → "0:00", 600 → "10:00".
+- **New pure function** `KeepAwakePolicy.ringProgress(remaining: TimeInterval, total: TimeInterval) -> Double`: remaining / total, clamped to 0…1, and 0 when total ≤ 0. Tests: (1800, 3600) → 0.5, (4000, 3600) → 1, (−1, 3600) → 0, (5, 0) → 0.
+- **Card (menu bar):** while a timer runs, replace the current card with option A:
+  - An HStack(spacing 12) holding:
+    - a 44 × 44 ring: a background `Circle().stroke(lineWidth: 4)` in a light tint, plus `Circle().trim(from: 0, to: progress)` rotated −90°, stroked in the accent colour with a round line cap, and a small `clock` symbol in the centre;
+    - a VStack(alignment: .leading, spacing: 1) with `Text(clockText)` at 22 pt semibold, `.monospacedDigit()`, `.lineLimit(1)`, and `Text("until " + time)` at 11 pt secondary, `.lineLimit(1)`;
+    - a Spacer;
+    - a 28 pt circular button with an `xmark` symbol (font size 10, bold), `.accessibilityLabel("Stop Keep Awake")`, calling `stop()`.
+  - The total for the ring comes from `activePreset.duration`.
+  - While only the PS5 rule holds, the same layout shows a full ring, "PS5" in place of the clock, and "while the PS5 is on" underneath. In that state the ✕ hides the reason until the next change (it can't stop the rule); or omit the ✕ if simpler, and say which you chose.
+- **Presets row:** a single `HStack(spacing: 4)` of six equal-width buttons, 11 pt, with a filled accent background for `activePreset` and a quiet fill for the others. Drop the 3 × 2 grid.
+- **Live countdown:** the clock text changes every second, so the 1 s tick must publish `decision` or the remaining time each tick. The `badgeText` optimisation stays only for the label.
+- Use TDD for the two pure functions and the presets. Run scripts/test.sh once after the last edit, plus `swift build`. Commit with the message `feat: Keep Awake progress-ring card and new presets`.
