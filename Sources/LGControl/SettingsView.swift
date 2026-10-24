@@ -10,6 +10,7 @@ struct SettingsView: View {
             KeyboardSection()
             WindowsSection()
             BrightnessSyncSection()
+            KeepAwakeSection()
             GeneralSection()
         }
         .formStyle(.grouped)
@@ -159,6 +160,39 @@ private struct BrightnessSyncSection: View {
 
     private static func format(_ offset: Int) -> String {
         offset > 0 ? "+\(offset)" : offset < 0 ? "−\(-offset)" : "0"
+    }
+}
+
+// MARK: Keep Awake
+
+private struct KeepAwakeSection: View {
+    @EnvironmentObject private var keepAwake: KeepAwakeModel
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $keepAwake.ps5RuleOn) {
+                Text("Keep awake while the LG shows the PS5")
+                Text("Your Mac won’t sleep while you play; ends when you switch back.")
+            }
+            .toggleStyle(.switch)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Stop when battery is below")
+                    Spacer()
+                    Text("\(keepAwake.batteryThreshold)%").monospacedDigit().foregroundStyle(.secondary)
+                }
+                Slider(value: Binding(
+                    get: { Double(keepAwake.batteryThreshold) },
+                    set: { keepAwake.batteryThreshold = Int($0.rounded()) }),
+                       in: 5...50, step: 5)
+                    .labelsHidden()
+            }
+        } header: {
+            Text("Keep Awake")
+        } footer: {
+            Text("Only on battery power. Plugged in, Keep Awake runs until its timer ends.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
     }
 }
 

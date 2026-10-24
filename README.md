@@ -93,6 +93,31 @@ has moved by at least 1%, sets the LG to that level plus an offset.
 The main window shows `Following MacBook` under Brightness while it's on. The MacBook level comes
 from the private DisplayServices framework (read only; nothing is written to the MacBook).
 
+## Keep Awake
+
+The Keep Awake section of the menu bar panel stops both the screens and the Mac going to sleep
+while you're not touching them. Pick a preset (`15 min`, `30 min`, `1 h`, `2 h`, `5 h` or
+`10 h`) and a card shows the time left and when it ends, with **Stop** beside it. Picking another
+preset starts again from now. While it runs, the menu bar icon shows the time left, such as
+`1h 15m`.
+
+- **PS5 rule:** Settings › Keep Awake › **Keep awake while the LG shows the PS5** (on by default)
+  keeps the Mac awake while the LG is on the PS5 input, and the badge reads `PS5`. It ends when
+  you switch back to the Mac from Screen Monitor. The LG answers on every input, so a switch made
+  with the monitor's own buttons can't be seen; the rule therefore gives up after 8 hours.
+- **Battery rule:** **Stop when battery is below** (5–50%, default 20%) ends Keep Awake when the
+  MacBook is on battery and drops below that level, and the panel shows
+  `Stopped: battery below 20%`. Plugged in, Keep Awake runs until its timer ends.
+
+To check the hold, run:
+
+```sh
+pmset -g assertions | grep -i "Screen Monitor"
+```
+
+While Keep Awake holds it lists two `Screen Monitor: Keep Awake` assertions (display and system
+idle sleep); after Stop, or when the app quits, it lists none.
+
 ## Tests
 
 ```sh

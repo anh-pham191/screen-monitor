@@ -4,6 +4,10 @@ import LGKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Set by the App's init, so quitting can release the power assertions. Static because the
+    /// delegate adaptor's instance isn't reachable from there.
+    static var keepAwake: KeepAwakeModel?
+
     // The menu bar icon should outlive the main window.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
@@ -18,12 +22,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
     }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        Self.keepAwake?.assertion.release()
+    }
 }
 
 @main
 struct LGControlApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var model = MonitorModel()
+    @StateObject private var model: MonitorModel
+    @StateObject private var keepAwake: KeepAwakeModel
+
+    init() {
+        let m = MonitorModel()
+        _model = StateObject(wrappedValue: m)
+        let k = KeepAwakeModel(monitor: m)
+        _keepAwake = StateObject(wrappedValue: k)
+        AppDelegate.keepAwake = k
+    }
 
     var body: some Scene {
         Window("Screen Monitor", id: "main") {
@@ -36,13 +53,34 @@ struct LGControlApp: App {
         }
 
         Settings {
-            SettingsView().environmentObject(model)
+            SettingsView().environmentObject(model).environmentObject(keepAwake)
         }
 
         // The window style is needed for sliders; the default menu style can't host them.
-        MenuBarExtra("Screen Monitor", systemImage: "display") {
-            MenuBarContent().environmentObject(model)
+        MenuBarExtra {
+            MenuBarContent().environmentObject(model).environmentObject(keepAwake)
+        } label: {
+            MenuBarLabel().environmentObject(keepAwake)
         }
         .menuBarExtraStyle(.window)
+    }
+}
+
+/// While Keep Awake holds, the time left (or "PS5") sits beside the icon.
+private struct MenuBarLabel: View {
+    @EnvironmentObject private var keepAwake: KeepAwakeModel
+    var body: some View {
+        Group {
+            if let badge = keepAwake.badgeText {
+                // Monospaced digits stop the menu bar item jittering as the minutes change.
+                HStack(spacing: 3) {
+                    Image(systemName: "display")
+                    Text(badge).monospacedDigit()
+                }
+            } else {
+                Image(systemName: "display")
+            }
+        }
+        .accessibilityLabel("Screen Monitor")
     }
 }
