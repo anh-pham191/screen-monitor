@@ -79,7 +79,7 @@ Goals:
 2. While active, **both the screens and the Mac stay awake**: no display sleep, no idle system sleep. This uses public IOKit power assertions (`IOPMAssertionCreateWithName`), so it needs no permission. The assertion is always released when the timer ends, on Stop, on a stop rule, and when the app quits.
 3. The **menu bar icon shows a badge** while active: a clock symbol plus the short time left ("1h 5m", "45m", "<1m"), or "PS5" when only the PS5 rule is holding.
 4. **Auto-stop on low battery:** on battery power, when the charge falls below the threshold (default **20%**, adjustable **5–50% in steps of 5** in Settings), the timer is cancelled and nothing is held. The panel shows "Stopped: battery below 20%" until the next start. Plugged in, the rule never fires.
-5. **Keep awake while the LG shows the PS5** (on by default, toggle in Settings): while `lastInput == .ps5`, the Mac and screens stay awake even with no timer running. This ends when the LG goes back to the Mac. The battery rule overrides it.
+5. **Keep awake while the LG shows the PS5** (on by default, toggle in Settings): while `lastInput == .ps5`, the Mac and screens stay awake even with no timer running. This ends when the LG goes back to the Mac, or after at most 8 hours as a safety cap, because the app can't tell if the LG was switched back with its own buttons. The battery rule overrides it.
 6. A **Settings › Keep Awake** section: the PS5 toggle and the battery-threshold slider.
 
 Non-goals: a keyboard shortcut, start at login, ⌥-click on the icon, indefinite or custom durations, "until a time", closed-lid (clamshell) mode, and notifications.

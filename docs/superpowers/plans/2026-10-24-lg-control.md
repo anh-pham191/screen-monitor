@@ -727,7 +727,7 @@ Spec: the "Keep Awake (2026-10-24 evening)" section of the spec. Design: the Cla
 
 **Interfaces (Produces):**
 - `public enum KeepAwakePreset: Int, CaseIterable, Sendable` with minutes 15, 30, 60, 120, 300, 600. It has `public var label: String` ("15 min", "30 min", "1 h", "2 h", "5 h", "10 h") and `public var duration: TimeInterval`.
-- `public struct KeepAwakeInputs: Equatable, Sendable { public var timerEnd: Date?; public var now: Date; public var ps5Showing: Bool; public var ps5RuleOn: Bool; public var onBattery: Bool; public var batteryPercent: Int?; public var batteryThreshold: Int }` with a public memberwise init.
+- `public struct KeepAwakeInputs: Equatable, Sendable { public var timerEnd: Date?; public var now: Date; public var ps5Showing: Bool; public var ps5RuleOn: Bool; public var onBattery: Bool; public var batteryPercent: Int?; public var batteryThreshold: Int; public var ps5Since: Date? }` with a public memberwise init (ps5Since: see the amendments).
 - `public enum KeepAwakeReason: Equatable, Sendable { case timer(remaining: TimeInterval), ps5 }`
 - `public enum KeepAwakeStop: Equatable, Sendable { case timerFinished, lowBattery(threshold: Int) }`
 - `public struct KeepAwakeDecision: Equatable, Sendable { public let hold: Bool; public let reason: KeepAwakeReason?; public let clearTimer: Bool; public let stopped: KeepAwakeStop? }`
@@ -750,6 +750,13 @@ Spec: the "Keep Awake (2026-10-24 evening)" section of the spec. Design: the Cla
 - [ ] Step 2: Run `scripts/test.sh` and confirm it fails to compile (RED).
 - [ ] Step 3: Implement.
 - [ ] Step 4: Run the tests and confirm they pass (GREEN), then the full suite once.
+- [ ] **Review amendments (binding; they override conflicting text above):**
+  - Text rounding, exactly: if `remaining < 60`, give "<1m" / "Less than a minute left". Otherwise `m = Int(ceil(remaining / 60))`; when `m >= 60`, h = m / 60 and rest = m % 60. Extra tests: 3599 → "1h", 3601 → "1h 1m", 60 → "1m", 61 → "2m", 59 → "<1m", 899.99 → "15m", 36000 → "10h" (and the matching longText). Rounding up means "1m" shows only at exactly 60 s; that's accepted.
+  - Rule 1's "a timer was running" means `timerEnd != nil`, including an expired one. Pin it with a test.
+  - `KeepAwakeDecision` gets a public memberwise init and `public static let idle` (hold false, reason nil, clearTimer false, stopped nil), because the app target can't use `@testable`.
+  - **PS5 safety cap (Claude's call):** if Anh switches the LG back with its own buttons, the app can't tell, because the LG answers DDC on every input. So the PS5 rule holds for at most 8 hours. Add `ps5Since: Date?` to `KeepAwakeInputs`; the PS5 rule holds only while `now - ps5Since < 8 h`. Test: just under 8 h holds; 8 h or more doesn't. The README documents this limit.
+  - clampThreshold tests also cover 7 → 5 and 8 → 10.
+
 - [ ] Step 5: Commit with the message `feat: add the Keep Awake policy`.
 
 ### Task 13: Keep Awake in the app
@@ -770,6 +777,22 @@ Spec: the "Keep Awake (2026-10-24 evening)" section of the spec. Design: the Cla
 - [ ] Step 2: Wire up the menu bar section, the label badge and Settings to match the design.
 - [ ] Step 3: Run `scripts/test.sh` (expect it to pass) and `swift build`. Don't run build-app.sh; the controller packages the app.
 - [ ] Step 4: The controller verifies, read-only, after packaging: `pmset -g assertions | grep -i "Screen Monitor"` shows both assertions while a timer runs and none after Stop. Anh then checks the panel, the badge, the countdown and the PS5 rule.
+- [ ] **Review amendments (binding; they override conflicting text above):**
+  - **Combine timing:** `@Published` delivers in willSet, so `monitor.$lastInput.sink { [weak self] value in self?.evaluate(lastInput: value) }` must pass the NEW value in. `evaluate` takes an optional `lastInput` override and otherwise reads `monitor.lastInput`. Track `ps5Since`: set it when lastInput becomes `.ps5`, clear it on anything else.
+  - **Wiring:** in `LGControlApp.init`, `let m = MonitorModel(); _model = StateObject(wrappedValue: m); _keepAwake = StateObject(wrappedValue: KeepAwakeModel(monitor: m))`. Inject `.environmentObject(keepAwake)` into EVERY scene that uses it: the MenuBarExtra content AND label, Settings, and the main window if it shows anything. `KeepAwakeModel` observes `NSApplication.willTerminateNotification` itself and releases. powerd also drops assertions when a process exits.
+  - **lastStop:** only a non-nil `.lowBattery` sets it. `start()`, `stop()` and any decision with `hold == true` clear it. `.timerFinished` is never shown.
+  - **activePreset:** publish `activePreset: KeepAwakePreset?`. `start` sets it, and it's cleared whenever `timerEnd` is cleared. The highlight uses it.
+  - **Tick:** `Timer(timeInterval: 1, repeats: true)` added with `RunLoop.main.add(t, forMode: .common)`, `tolerance = 0.2`. It lives in the model, never in a view, and runs only while timerEnd != nil or the PS5 rule could hold. Also evaluate on `NSWorkspace.didWakeNotification`. Publish `badgeText: String?` separately, assigned only when the text changes, so the label doesn't redraw every second for nothing.
+  - **PowerAssertion:** the constants are `String`s, so use `kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString` (the same for system sleep) and `IOPMAssertionLevel(kIOPMAssertionLevelOn)`. Store each `IOPMAssertionID` separately (0 = none) and zero it on release. A partial create failure retries on the next hold.
+  - **PowerSource:**
+    - Use `IOPSCopyPowerSourcesInfo()?.takeRetainedValue()` and `IOPSCopyPowerSourcesList(blob)?.takeRetainedValue() as? [CFTypeRef]`, but `IOPSGetProvidingPowerSourceType(blob).takeUnretainedValue()` and `IOPSGetPowerSourceDescription(blob, ps)?.takeUnretainedValue()` (Get rule).
+    - Take the percent only from the source with `kIOPSTypeKey == kIOPSInternalBatteryType`.
+    - On battery means the providing type is `kIOPSBatteryPowerValue`.
+  - **MenuBarExtra label:** use `MenuBarExtra(content:label:)`. Try `HStack { Image("display"); Text(badge) }` first, with a single image plus text. Only if the controller's on-screen check shows it dropped is the fallback to render the label with `ImageRenderer` into a template `NSImage`. Keep monospaced digits where they render.
+  - **Time format:** `Date.FormatStyle().hour().minute()`, which follows the system clock setting.
+  - **README:** cover the presets, that both the screens and the Mac stay awake, the PS5 rule and its 8-hour cap, the battery rule, and the `pmset -g assertions` check.
+  - **Manual check (controller):** from idle, switch to PS5, and `pmset -g assertions` must list both "Screen Monitor: Keep Awake" assertions. After switching to the Mac they must be gone.
+
 - [ ] Step 5: Commit with the message `feat: keep the Mac and screens awake from the menu bar`.
 
 **Review Focus:**
