@@ -565,6 +565,7 @@ func data1(_ code: Int, down: Bool, rep: Bool = false) -> Int { (code << 16) | (
     - "Fine" comes from `event.flags` containing `.maskAlternate` and `.maskShift`.
   - Remember which key-downs were consumed (by key), and consume the matching key-up even if the pointer has moved since.
   - When the reading's maximum is 0 (unknown), pass the key through.
+  - **Same shortcuts as a normal Mac (Anh, 2026-10-24):** the keys are the standard brightness keys (F1/F2) and volume/mute keys (F10–F12), with ⌥⇧ for quarter-steps. With ⌥ alone, or any modifier set other than none or exactly ⌥⇧, always pass through, so macOS's own shortcuts (⌥ plus a key opens Displays or Sound settings) keep working. No custom hotkeys.
   - `handleMediaKey` updates the published `brightness`/`volume` straight away (converting `Double` ⇄ `UInt16` by rounding), so repeated presses build on each other. Then it writes through the slider's `LatestValueWriter`.
   - Accessibility: while it isn't trusted, poll `AXIsProcessTrusted()` every 1 s and start the tap once it is.
   - `pointerOnLG` uses `NSMouseInRect(NSEvent.mouseLocation, lgScreen.frame, false)`.
