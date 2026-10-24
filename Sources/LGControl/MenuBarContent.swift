@@ -13,15 +13,14 @@ struct MenuBarContent: View {
                 Spacer()
                 Text(model.details?.connection ?? "").font(.caption).foregroundStyle(.secondary)
             }
-            if model.hasTransport {
-                VStack(spacing: 2) {
-                    ForEach(Input.allCases, id: \.self) { input in
-                        MenuRow(title: input.label, checked: model.lastInput == input,
-                                highlighted: model.lastInput == input) { model.switchTo(input) }
-                    }
+            // Always shown, like the main window: they're the way back when the LG isn't answering.
+            VStack(spacing: 2) {
+                ForEach(Input.allCases, id: \.self) { input in
+                    MenuRow(title: input.label, checked: model.lastInput == input,
+                            highlighted: model.lastInput == input) { model.switchTo(input) }
                 }
-                Divider()
             }
+            Divider()
             if model.connected {
                 ValueSlider(title: "Brightness", value: model.brightness, maximum: model.brightnessMax,
                             set: model.setBrightness)

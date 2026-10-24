@@ -23,6 +23,8 @@ final class MonitorModel: ObservableObject {
     @Published private(set) var raw: [UInt8: VCPReading] = [:]
     @Published private(set) var details: DisplayDetails?
     @Published private(set) var capabilities: Capabilities?
+    /// The string the LG sent, kept next to the parse so Details can show what the parser missed.
+    @Published private(set) var capabilitiesRaw: String?
     @Published private(set) var capabilitiesError: String?
     @Published private(set) var refreshing = false
     @Published private(set) var loadingCapabilities = false
@@ -41,6 +43,8 @@ final class MonitorModel: ObservableObject {
         }
     }
     @Published private(set) var accessibilityTrusted = Accessibility.isTrusted()
+    /// False while the keys are wanted but the event tap couldn't be created, so Settings can say so.
+    @Published private(set) var keyTapActive = false
     @Published var syncEnabled: Bool {
         didSet {
             guard syncEnabled != oldValue else { return }
@@ -75,6 +79,11 @@ final class MonitorModel: ObservableObject {
     private var contrastWriter: LatestValueWriter<UInt16>!
     private var volumeWriter: LatestValueWriter<UInt16>!
     private var screenObserver: NSObjectProtocol?
+    private var wakeObserver: NSObjectProtocol?
+    private var refreshCoalescer = RefreshCoalescer()
+    /// One delayed refresh at a time: a burst of screen or wake notifications shares it.
+    private var delayedRefresh: DispatchWorkItem?
+    private var keyTapRetry: Timer?
     private let keyTap = MediaKeyTap()
     private let dragMonitor = WindowDragMonitor()
     private let hud = HUD()
@@ -100,7 +109,17 @@ final class MonitorModel: ObservableObject {
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refresh() }
+            MainActor.assumeIsolated {
+                self?.refresh()
+                // The LG's DDC often isn't ready yet when the screen first appears, so look again.
+                self?.scheduleRefresh(after: 1.5)
+            }
+        }
+        // The transport goes stale over sleep, and the LG takes a moment to answer after wake.
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.scheduleRefresh(after: 2) }
         }
         refresh()
 
@@ -122,8 +141,9 @@ final class MonitorModel: ObservableObject {
     // MARK: Reading
 
     func refresh() {
-        // Repeated Retry presses would otherwise queue up seconds of timeouts.
-        guard !refreshing else { return }
+        // Repeated requests would otherwise queue up seconds of timeouts; the coalescer folds any
+        // made mid-refresh into one rerun, so a hot-plug during a slow refresh isn't lost.
+        guard refreshCoalescer.request() else { return }
         refreshing = true
         queue.async { [weak self] in
             guard let self else { return }
@@ -132,17 +152,33 @@ final class MonitorModel: ObservableObject {
             let controller = transport.map { DDCController(transport: $0) }
             self.ddc = controller
             let readout = controller.map { c in MonitorReadout.read { try c.read($0) } }
-            // Not DDC, but an IORegistry walk: keep it off the main thread too.
-            let name = DisplayDetailsReader.read()?.edid?.name
+            // Not DDC, but an IORegistry walk: keep it off the main thread too. Publishing it here
+            // lets the header recover when the LG shows up after launch.
+            let details = DisplayDetailsReader.read()
             DispatchQueue.main.async {
-                self.lgName = name ?? Self.defaultLGName
+                self.details = details
+                self.lgName = details?.edid?.name ?? Self.defaultLGName
                 self.apply(hasTransport: transport != nil, readout: readout)
+                self.refreshing = false
+                if self.refreshCoalescer.finished() { self.refresh() }
             }
         }
     }
 
+    /// Debounced: a newer request replaces a pending one, so a burst of notifications costs one refresh.
+    private func scheduleRefresh(after delay: TimeInterval) {
+        delayedRefresh?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                self?.delayedRefresh = nil
+                self?.refresh()
+            }
+        }
+        delayedRefresh = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+    }
+
     private func apply(hasTransport: Bool, readout: MonitorReadout?) {
-        refreshing = false
         self.hasTransport = hasTransport
         guard let readout else {
             connected = false
@@ -214,6 +250,9 @@ final class MonitorModel: ObservableObject {
                 // Only record the input once the LG took it; otherwise the UI would claim a switch
                 // that never happened. A refresh shows the user the LG is unreachable.
                 if outcome.succeeded {
+                    // Back on the Mac input, or found again after being lost: the LG answers DDC
+                    // again only once it has settled on the new input, so read it then.
+                    if !self.connected || input == .mac { self.scheduleRefresh(after: 1.75) }
                     self.lastInput = input
                 } else {
                     self.refresh()
@@ -299,8 +338,29 @@ final class MonitorModel: ObservableObject {
 
     /// Starts or stops everything that needs Accessibility: the key tap and the screen split.
     private func updateKeyTap() {
-        if keysEnabled && accessibilityTrusted { keyTap.start() } else { keyTap.stop() }
+        keyTapRetry?.invalidate()
+        keyTapRetry = nil
+        if keysEnabled && accessibilityTrusted {
+            startKeyTap(retriesLeft: 5)
+        } else {
+            keyTap.stop()
+            keyTapActive = false
+        }
         if splitEnabled && accessibilityTrusted { dragMonitor.start() } else { dragMonitor.stop() }
+    }
+
+    /// Creating the tap can fail briefly right after the Accessibility grant, before macOS has
+    /// caught up, so give it a few more tries before telling Anh.
+    private func startKeyTap(retriesLeft: Int) {
+        keyTapActive = keyTap.start()
+        guard !keyTapActive, retriesLeft > 0 else { return }
+        keyTapRetry = Timer.scheduledTimer(withTimeInterval: 1, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.keysEnabled, self.accessibilityTrusted else { return }
+                self.keyTapRetry = nil
+                self.startKeyTap(retriesLeft: retriesLeft - 1)
+            }
+        }
     }
 
     /// Unknown maximum (never read, or reported as 0): the keys stay with macOS rather than guess.
@@ -346,9 +406,14 @@ final class MonitorModel: ObservableObject {
     // MARK: Details
 
     func loadDetails(forceCapabilities: Bool = false) {
-        details = DisplayDetailsReader.read()
+        // An IORegistry walk: not DDC, but slow enough to keep off the main thread.
+        queue.async { [weak self] in
+            let details = DisplayDetailsReader.read()
+            DispatchQueue.main.async { self?.details = details }
+        }
         if forceCapabilities {
             capabilities = nil
+            capabilitiesRaw = nil
             capabilitiesError = nil
         }
         // A capabilities fetch takes seconds, so keep the first good one.
@@ -357,17 +422,18 @@ final class MonitorModel: ObservableObject {
         queue.async { [weak self] in
             guard let self else { return }
             if self.ddc == nil { self.ddc = findExternalTransport().map { DDCController(transport: $0) } }
-            let result: Result<Capabilities, Error>
+            let result: Result<String, Error>
             if let ddc = self.ddc {
-                result = Result { Capabilities.parse(try ddc.capabilities()) }
+                result = Result { try ddc.capabilities() }
             } else {
                 result = .failure(DDCError.noReply(code: 0xF3))
             }
             DispatchQueue.main.async {
                 self.loadingCapabilities = false
                 switch result {
-                case .success(let caps):
-                    self.capabilities = caps
+                case .success(let text):
+                    self.capabilitiesRaw = text
+                    self.capabilities = Capabilities.parse(text)
                     self.capabilitiesError = nil
                 case .failure(let error):
                     self.capabilitiesError = Self.describe(error)

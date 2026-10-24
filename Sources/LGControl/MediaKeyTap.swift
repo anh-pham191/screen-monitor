@@ -16,8 +16,10 @@ final class MediaKeyTap {
     var isRunning: Bool { tap != nil }
 
     /// Needs Accessibility: an active (not listen-only) tap fails to create without it.
-    func start() {
-        guard tap == nil else { return }
+    /// Returns whether the tap is running afterwards.
+    @discardableResult
+    func start() -> Bool {
+        guard tap == nil else { return true }
         let systemDefined = CGEventType(rawValue: 14)!   // NX_SYSDEFINED, which CGEventType doesn't name
         let mask = (CGEventMask(1) << systemDefined.rawValue)
             | (CGEventMask(1) << CGEventType.keyDown.rawValue)
@@ -26,13 +28,14 @@ final class MediaKeyTap {
                                           eventsOfInterest: mask, callback: mediaKeyTapCallback,
                                           userInfo: Unmanaged.passUnretained(self).toOpaque()) else {
             NSLog("LG Control: couldn’t create the key tap (Accessibility not granted?)")
-            return
+            return false
         }
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         self.tap = tap
         self.source = source
+        return true
     }
 
     func stop() {

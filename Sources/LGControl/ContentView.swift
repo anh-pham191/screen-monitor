@@ -8,14 +8,14 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HeaderCard()
-            if model.hasTransport {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Input").font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
-                    InputSegments()
-                    if !model.connected {
-                        Text("Input buttons always work, so you can switch the LG back to this Mac.")
-                            .font(.caption2).foregroundStyle(.secondary)
-                    }
+            // Always shown: while the LG shows another input it may not answer DDC at all, and
+            // these are how Anh gets it back. `switchTo` finds the transport again itself.
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Input").font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
+                InputSegments()
+                if !model.connected {
+                    Text("Input buttons always work, so you can switch the LG back to this Mac.")
+                        .font(.caption2).foregroundStyle(.secondary)
                 }
             }
             if model.connected {
