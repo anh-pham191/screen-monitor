@@ -8,6 +8,8 @@
 	<string>com.anhpham.lgcontrol</string>
 	<key>CFBundleExecutable</key>
 	<string>LGControl</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleName</key>
 	<string>LG Control</string>
 	<key>CFBundlePackageType</key>
