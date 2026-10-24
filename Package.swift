@@ -1,4 +1,4 @@
-// swift-tools-version:6.0
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
@@ -9,5 +9,6 @@ let package = Package(
         .executableTarget(name: "lgctl", dependencies: ["LGKit"]),
         .executableTarget(name: "LGControl", dependencies: ["LGKit"]),
         .testTarget(name: "LGKitTests", dependencies: ["LGKit"]),
-    ]
+    ],
+    swiftLanguageModes: [.v5]
 )
