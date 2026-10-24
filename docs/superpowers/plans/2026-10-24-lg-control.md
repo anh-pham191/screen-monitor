@@ -711,3 +711,70 @@ func data1(_ code: Int, down: Bool, rep: Bool = false) -> Int { (code << 16) | (
 ### Task 10: Switch inputs with LG's own command (bug fix)
 
 Requirements and tests: see the brief `.superpowers/sdd/2026-10-24-lg-control/task-10-brief.md` (copied here in substance): `DDCPacket.setRequest(_:value:dataAddress:)` with seed `0x6E ^ dataAddress` (`setRequest(0xF4, value: 0x91, dataAddress: 0x50) == [0x84, 0x03, 0xF4, 0x00, 0x91, 0xDC]`); `DDCController.write(_:value:dataAddress:)`; `InputCommand { lg (0xF4 @ 0x50), standard (0x60 @ 0x51) }`; `InputConfig.command` default `.lg` with 0x90 / 0x91 / 0xD1, `defaults(for:)`, `setCommand(_:)`, lenient legacy decoding as `.standard`; `MonitorModel.switchTo` uses the command; Settings picker + footer; `lgctl set … --addr <hex>`; README. Manual check with Anh: PS5 sticks, Mac returns, USB-C (0xD1) if the Windows machine is on.
+
+---
+
+## Keep Awake: Tasks 12–13
+
+Spec: the "Keep Awake (2026-10-24 evening)" section of the spec. Design: the Claude Design artboard "Keep Awake: menu bar panel and Settings" (`KeepAwake.dc.html` on the canvas). Extra global constraints:
+- UserDefaults keys: `keepAwakePS5` (Bool, default true) and `keepAwakeBatteryThreshold` (Int, default 20, clamped to 5…50).
+- UI copy, exactly: `Keep Awake`, the preset labels `15 min`, `30 min`, `1 h`, `2 h`, `5 h`, `10 h`, `Stop`, `Screens and Mac stay awake · until <time>`, `Keep awake while the LG shows the PS5`, `Stop when battery is below`, `Stopped: battery below <N>%`, and the badge `PS5`.
+- Never hold a power assertion without a matching release path. The app's `applicationWillTerminate` releases it too.
+
+### Task 12: Keep Awake policy (LGKit, pure)
+
+**Files:** Create `Sources/LGKit/KeepAwake.swift`, `Tests/LGKitTests/KeepAwakeTests.swift`.
+
+**Interfaces (Produces):**
+- `public enum KeepAwakePreset: Int, CaseIterable, Sendable` with minutes 15, 30, 60, 120, 300, 600. It has `public var label: String` ("15 min", "30 min", "1 h", "2 h", "5 h", "10 h") and `public var duration: TimeInterval`.
+- `public struct KeepAwakeInputs: Equatable, Sendable { public var timerEnd: Date?; public var now: Date; public var ps5Showing: Bool; public var ps5RuleOn: Bool; public var onBattery: Bool; public var batteryPercent: Int?; public var batteryThreshold: Int }` with a public memberwise init.
+- `public enum KeepAwakeReason: Equatable, Sendable { case timer(remaining: TimeInterval), ps5 }`
+- `public enum KeepAwakeStop: Equatable, Sendable { case timerFinished, lowBattery(threshold: Int) }`
+- `public struct KeepAwakeDecision: Equatable, Sendable { public let hold: Bool; public let reason: KeepAwakeReason?; public let clearTimer: Bool; public let stopped: KeepAwakeStop? }`
+- `public enum KeepAwakePolicy`:
+  - `static func evaluate(_ i: KeepAwakeInputs) -> KeepAwakeDecision`. The rules, in order:
+    1. **Low battery:** `onBattery && batteryPercent != nil && batteryPercent! < batteryThreshold` gives hold=false and reason=nil. clearTimer = (timerEnd != nil), and stopped = .lowBattery(threshold) if a timer was running or the PS5 rule would have held, otherwise nil.
+    2. **Timer running:** `timerEnd > now` gives hold=true, reason=.timer(remaining: timerEnd − now), clearTimer=false, stopped=nil.
+    3. **Timer expired:** `timerEnd <= now` sets clearTimer=true and stopped=.timerFinished, then falls through to rule 4.
+    4. **PS5:** `ps5RuleOn && ps5Showing` gives hold=true and reason=.ps5. When it holds after an expired timer, stopped is nil.
+    5. **Otherwise:** hold=false, reason=nil.
+  - `static func shortText(_ remaining: TimeInterval) -> String`: `≥ 1 h` gives "1h 5m" (or "2h" when the minutes are 0); `≥ 60 s` gives "45m"; otherwise "<1m". Minutes round UP, so 59 m 30 s shows "1h" and 30 s shows "<1m".
+  - `static func longText(_ remaining: TimeInterval) -> String`: "1 h 5 min left", "2 h left", "45 min left", "Less than a minute left". It uses the same rounding up.
+  - `static func clampThreshold(_ v: Int) -> Int` snaps to the nearest multiple of 5 within 5…50.
+
+- [ ] Step 1: Write the failing tests:
+  - every rule branch, including the battery rule beating the PS5 rule and the timer, an expired timer falling through to the PS5 rule, `batteryPercent == nil` on battery never stopping, plugged in at 3% never stopping, and the threshold being strict (20% with threshold 20 doesn't stop; 19% does);
+  - the preset minutes and labels;
+  - shortText/longText for 3900 s → "1h 5m" / "1 h 5 min left", 7200 → "2h" / "2 h left", 2700 → "45m" / "45 min left", 3570 → "1h" / "1 h left", 30 → "<1m" / "Less than a minute left";
+  - clampThreshold: 3 → 5, 22 → 20, 23 → 25, 99 → 50.
+- [ ] Step 2: Run `scripts/test.sh` and confirm it fails to compile (RED).
+- [ ] Step 3: Implement.
+- [ ] Step 4: Run the tests and confirm they pass (GREEN), then the full suite once.
+- [ ] Step 5: Commit with the message `feat: add the Keep Awake policy`.
+
+### Task 13: Keep Awake in the app
+
+**Files:** Create `Sources/LGControl/PowerAssertion.swift`, `Sources/LGControl/PowerSource.swift`, `Sources/LGControl/KeepAwakeModel.swift`. Modify `LGControlApp.swift` (the MenuBarExtra label badge, the environment object, and the release on terminate), `MenuBarContent.swift` (the Keep Awake section), `SettingsView.swift` (a `KeepAwakeSection` before General), and `README.md`.
+
+**Interfaces (Consumes):** Task 12's `KeepAwakePolicy`, `KeepAwakePreset`, `KeepAwakeInputs`, `KeepAwakeReason` and `KeepAwakeStop`, plus `MonitorModel.lastInput` (published).
+
+- `final class PowerAssertion`: `func hold(reason: String)` creates two assertions with `IOPMAssertionCreateWithName`, `kIOPMAssertionTypePreventUserIdleDisplaySleep` and `kIOPMAssertionTypePreventUserIdleSystemSleep`, both with level `kIOPMAssertionLevelOn` and name "Screen Monitor: Keep Awake". It is idempotent, so a second hold doesn't create more assertions. `func release()` releases both (`IOPMAssertionRelease`) and is also idempotent. `deinit` calls release. `var isHeld: Bool`.
+- `enum PowerSource { static func read() -> (onBattery: Bool, percent: Int?) }` uses `IOPSCopyPowerSourcesInfo`, `IOPSGetProvidingPowerSourceType` (on battery when it is `kIOPSBatteryPowerValue`) and `IOPSCopyPowerSourcesList` / `IOPSGetPowerSourceDescription`, with percent = current/max capacity × 100. On any failure it returns (false, nil), so a desktop counts as plugged in.
+- `@MainActor final class KeepAwakeModel: ObservableObject` publishes `timerEnd: Date?`, `decision: KeepAwakeDecision`, `lastStop: KeepAwakeStop?`, `ps5RuleOn` (persisted) and `batteryThreshold` (persisted, clamped). It provides `start(_ preset: KeepAwakePreset)`, which sets timerEnd = now + duration, clears lastStop and evaluates; `stop()`, which clears timerEnd and lastStop, then evaluates; and `func evaluate()`, which builds the inputs from the clock, `PowerSource.read()`, `ps5Showing = monitor.lastInput == .ps5` and the settings, applies the decision (`hold` → `assertion.hold`, otherwise release; `clearTimer` → timerEnd = nil; `stopped` → lastStop, except that `.timerFinished` doesn't display anything), and publishes it. It ticks every 1 s while `timerEnd != nil || (ps5RuleOn && lastInput == .ps5)`, and is otherwise idle. It re-evaluates on `monitor.$lastInput` changes (Combine sink) and on settings changes. The timer callback hops with `[weak self]` and `MainActor.assumeIsolated`.
+- Menu bar section (match the design): a `Keep Awake` header and, while holding, a reason label on the right ("Timer" / "PS5"). While a timer runs, a blue card shows the longText, `Screens and Mac stay awake · until h:mm a`, and a `Stop` button. While only the PS5 rule holds, the card reads "Keeping awake while the PS5 is on". Below it is a 3×2 grid of the preset buttons, with the running preset highlighted. If `lastStop` is `.lowBattery(n)`, a small orange line reads `Stopped: battery below n%`.
+- MenuBarExtra label: while holding, `HStack(spacing: 3) { Image(systemName: "display"); Image(systemName: "clock.fill"); Text(shortText or "PS5").monospacedDigit() }`. Otherwise only the display icon, as today.
+- Settings › Keep Awake: a Toggle `Keep awake while the LG shows the PS5` with the hint "Your Mac won’t sleep while you play; ends when you switch back.", and `Stop when battery is below` with a value label, a Slider over 5…50 step 5, and the footer "Only on battery power. Plugged in, Keep Awake runs until its timer ends."
+- `applicationWillTerminate` calls `keepAwake.assertion.release()`.
+
+- [ ] Step 1: Implement PowerAssertion, PowerSource and KeepAwakeModel. The decision logic stays in Task 12's tested policy; this task adds no new decision logic. If any appears, put it in LGKit with tests.
+- [ ] Step 2: Wire up the menu bar section, the label badge and Settings to match the design.
+- [ ] Step 3: Run `scripts/test.sh` (expect it to pass) and `swift build`. Don't run build-app.sh; the controller packages the app.
+- [ ] Step 4: The controller verifies, read-only, after packaging: `pmset -g assertions | grep -i "Screen Monitor"` shows both assertions while a timer runs and none after Stop. Anh then checks the panel, the badge, the countdown and the PS5 rule.
+- [ ] Step 5: Commit with the message `feat: keep the Mac and screens awake from the menu bar`.
+
+**Review Focus:**
+1. An assertion leaked after Stop, quitting, or a battery stop: every path must release.
+2. A stale countdown, or the tick running forever while idle.
+3. The battery rule firing while plugged in, or when the battery level is unknown.
+4. The PS5 rule outliving a switch back to the Mac.
+5. The badge text width causing the menu bar item to jitter (use monospaced digits).

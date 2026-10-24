@@ -69,3 +69,19 @@ Non-goals stay as listed, plus: picture modes, firmware updates, layouts other t
 ## Bug fix (2026-10-24 afternoon): LG's own input command
 
 Anh found that PS5 (HDMI 2) did not stick: the standard VCP 0x60 switch makes this LG go black and bounce back to the Mac, even with the app quit (so the morning "switched and came back" test was this bounce, not a working switch). LG's own command — VCP 0xF4 written to I2C data address 0x50, HDMI 1 = 0x90, HDMI 2 = 0x91 — holds the PS5 and switches back on command (verified with Anh). The app now uses LG's command by default (USB-C 0xD1, not yet verified), with Standard (VCP 0x60) selectable in Settings.
+
+## Keep Awake (2026-10-24 evening): Amphetamine-style keep-awake
+
+Anh wants Screen Monitor to keep the Mac and its screens awake for a chosen time, like Amphetamine, and to drop the need for a separate app.
+
+Goals:
+1. A **Keep Awake** section in the menu bar panel with presets **15 min, 30 min, 1 h, 2 h, 5 h, 10 h**. Picking one starts (or restarts) a timer. While it runs, the panel shows a live countdown ("1 h 5 min left"), the end time ("until 5:45 pm"), and a **Stop** button. No indefinite or custom durations (Anh's choice).
+2. While active, **both the screens and the Mac stay awake**: no display sleep, no idle system sleep. This uses public IOKit power assertions (`IOPMAssertionCreateWithName`), so it needs no permission. The assertion is always released when the timer ends, on Stop, on a stop rule, and when the app quits.
+3. The **menu bar icon shows a badge** while active: a clock symbol plus the short time left ("1h 5m", "45m", "<1m"), or "PS5" when only the PS5 rule is holding.
+4. **Auto-stop on low battery:** on battery power, when the charge falls below the threshold (default **20%**, adjustable **5–50% in steps of 5** in Settings), the timer is cancelled and nothing is held. The panel shows "Stopped: battery below 20%" until the next start. Plugged in, the rule never fires.
+5. **Keep awake while the LG shows the PS5** (on by default, toggle in Settings): while `lastInput == .ps5`, the Mac and screens stay awake even with no timer running. This ends when the LG goes back to the Mac. The battery rule overrides it.
+6. A **Settings › Keep Awake** section: the PS5 toggle and the battery-threshold slider.
+
+Non-goals: a keyboard shortcut, start at login, ⌥-click on the icon, indefinite or custom durations, "until a time", closed-lid (clamshell) mode, and notifications.
+
+Decisions (Claude's calls): there's one source of truth, a pure LGKit policy, re-evaluated every second while anything could be holding, and on input changes and settings changes. A timer start restarts from now. The battery threshold is a strict "<". The PS5 rule follows the app's `lastInput`, because the LG cannot report its input.
