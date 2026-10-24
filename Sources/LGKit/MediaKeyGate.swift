@@ -31,6 +31,8 @@ public struct MediaKeyGate: Sendable {
         }
         if event.isRepeat {
             guard owned.contains(event.key) else { return .passThrough }
+            // Mute is a toggle, not a step: acting on each repeat would flick it on and off while held.
+            if event.key == .mute { return .swallow }
             return modifiers.handle && canHandle ? .handle(fine: modifiers.fine) : .swallow
         }
         // A fresh press: forget any press whose key-up we never saw.

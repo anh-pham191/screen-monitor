@@ -44,6 +44,16 @@ struct DetailsView: View {
                             .textSelection(.enabled)
                     }
                 }
+                // Best-effort: shows exactly what the LG sent, including anything the parser skipped.
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Capabilities string")
+                    Text(model.capabilitiesRaw ?? DetailsFormat.missing)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
         .formStyle(.grouped)

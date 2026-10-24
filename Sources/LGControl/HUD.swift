@@ -28,7 +28,12 @@ final class HUD {
         let frame = screen.frame
         panel.setFrameOrigin(NSPoint(x: frame.midX - Self.size.width / 2, y: frame.minY + 140))
         generation += 1
-        panel.alphaValue = 1
+        // A plain assignment doesn't stop a fade already running in the animator, which would
+        // carry on to 0; a zero-length animation replaces it.
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0
+            panel.animator().alphaValue = 1
+        }
         // Never make it key: that would steal focus from whatever Anh is typing in.
         panel.orderFrontRegardless()
 

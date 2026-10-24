@@ -94,6 +94,10 @@ private struct KeyboardSection: View {
                 Text("Brightness keys change the LG while the pointer is on it. Volume and mute change the LG while it’s the sound output. Hold ⌥⇧ for smaller steps.")
             }
             .toggleStyle(.switch)
+            if model.keysEnabled && model.accessibilityTrusted && !model.keyTapActive {
+                Text("Keyboard keys couldn’t start — try toggling them off and on, or relaunch.")
+                    .font(.caption).foregroundStyle(.orange)
+            }
         } header: {
             Text("Keyboard")
         }

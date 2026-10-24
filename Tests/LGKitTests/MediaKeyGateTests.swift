@@ -103,3 +103,12 @@ private func up(_ key: MediaKey) -> MediaKeyEvent { MediaKeyEvent(key: key, isDo
     #expect(HUDLevel.fraction(50, maximum: 100) == 0.5)
     #expect(HUDLevel.fraction(5, maximum: 0) == 0)
 }
+
+@Test func holdingMuteTogglesItOnlyOnce() {
+    var gate = MediaKeyGate()
+    #expect(gate.decide(down(.mute), modifiers: plain, canHandle: true, route: { .lg }) == .handle(fine: false))
+    // Mute is a toggle: acting on every repeat would flicker it on and off while held.
+    #expect(gate.decide(down(.mute, repeat: true), modifiers: plain, canHandle: true, route: { .lg }) == .swallow)
+    #expect(gate.decide(down(.mute, repeat: true), modifiers: plain, canHandle: true, route: { .lg }) == .swallow)
+    #expect(gate.decide(up(.mute), modifiers: plain, canHandle: true, route: { .lg }) == .swallow)
+}
