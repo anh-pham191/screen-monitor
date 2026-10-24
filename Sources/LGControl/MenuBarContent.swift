@@ -138,10 +138,11 @@ private struct RingCard: View {
     var body: some View {
         HStack(spacing: 12) {
             ZStack {
-                Circle().stroke(Color.accentColor.opacity(0.2), lineWidth: 4)
+                Circle().strokeBorder(Color.accentColor.opacity(0.2), lineWidth: 4)
                 Circle()
                     .trim(from: 0, to: progress)
                     .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .padding(2)
                     .rotationEffect(.degrees(-90))
                 Image(systemName: "clock")
                     .font(.system(size: 14, weight: .semibold))
