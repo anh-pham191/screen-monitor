@@ -103,23 +103,33 @@ A command-line tool for poking the monitor directly:
 swift run lgctl read 10          # read VCP 0x10 (brightness)
 swift run lgctl read 60 --raw    # also print the raw reply bytes
 swift run lgctl set 10 1a        # write VCP 0x10 = 0x1A
+swift run lgctl set f4 91 --addr 50  # LG's own input command: switch to HDMI 2
 swift run lgctl caps             # capabilities string, model, MCCS version, inputs
 swift run lgctl info             # EDID name, serial, connection, resolution, refresh
 ```
 
-Codes and values are hex.
+Codes and values are hex. `--addr` sets the I2C data address for `set` (default `51`, the
+standard DDC/CI address); LG's own input command needs `50`.
 
 ## Input values
 
-| Input | VCP 0x60 value |
-|---|---|
-| Mac (HDMI 1) | `0x11` (verified) |
-| PS5 (HDMI 2) | `0x12` (verified) |
-| Windows (USB-C) | `0x0F` (default) |
+The standard input switch (VCP `0x60` at data address `0x51`) makes this LG go black and bounce
+straight back to HDMI 1. LG's own command holds the new input: VCP `0xF4` written to data address
+`0x50`. Settings › Inputs › Switch command picks between them (LG is the default); changing it
+resets the three values to that command's defaults.
 
-The USB-C value isn't verified. The LG advertises `11 12 0F 00` for input source, so `0x0F` is
-the best guess. If the Windows button doesn't switch, change the value in Settings: try `0x1B`,
-`0x10`, or another value listed under Details › Inputs advertised by monitor.
+| Input | LG command (VCP 0xF4 at 0x50) | Standard (VCP 0x60 at 0x51) |
+|---|---|---|
+| Mac (HDMI 1) | `0x90` (verified) | `0x11` |
+| PS5 (HDMI 2) | `0x91` (verified) | `0x12` |
+| Windows (USB-C) | `0xD1` (default) | `0x0F` (default) |
+
+The USB-C values aren't verified. Under LG's command USB-C is conventionally `0xD1`
+(DisplayPort `0xD0`). Under standard, the LG advertises `11 12 0F 00` for input source, so `0x0F`
+is the best guess. If the Windows button doesn't switch, change the value in Settings. Details ›
+Inputs advertised by monitor lists the standard `0x60` values.
+
+Settings saved before the switch command existed load as Standard with their stored values.
 
 ## Launch at login
 

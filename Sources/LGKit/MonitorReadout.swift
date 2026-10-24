@@ -55,7 +55,7 @@ public enum DetailsFormat {
 }
 
 extension InputConfig {
-    /// Synthesised Decodable needs every key, so an older or partial blob falls back to defaults.
+    /// Unreadable data (not JSON, wrong types) falls back to defaults; missing keys are handled by the decoder.
     public static func decodeOrDefault(_ data: Data?) -> InputConfig {
         data.flatMap { try? JSONDecoder().decode(InputConfig.self, from: $0) } ?? InputConfig()
     }

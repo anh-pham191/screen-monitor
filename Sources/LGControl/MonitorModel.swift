@@ -239,12 +239,13 @@ final class MonitorModel: ObservableObject {
             WindowMover.moveAppWindowsToBuiltInScreen()
         }
         let value = inputConfig.value(for: input)
+        let command = inputConfig.command
         queue.async { [weak self] in
             guard let self else { return }
             let outcome = ReconnectingWrite.run(
                 current: self.ddc,
                 rediscover: { findExternalTransport().map { DDCController(transport: $0) } },
-                write: { try $0.write(VCP.inputSource, value: value) })
+                write: { try $0.write(command.vcp, value: value, dataAddress: command.dataAddress) })
             self.ddc = outcome.controller
             DispatchQueue.main.async {
                 // Only record the input once the LG took it; otherwise the UI would claim a switch

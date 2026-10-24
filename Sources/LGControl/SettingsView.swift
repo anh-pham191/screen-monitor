@@ -21,13 +21,20 @@ struct SettingsView: View {
 // MARK: Inputs
 
 private struct InputsSection: View {
+    @EnvironmentObject private var model: MonitorModel
+
     var body: some View {
         Section {
+            Picker("Switch command", selection: Binding(
+                get: { model.inputConfig.command },
+                set: { model.inputConfig.setCommand($0) })) {
+                ForEach(InputCommand.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
             ForEach(Input.allCases, id: \.self) { InputValueField(input: $0) }
         } header: {
             Text("Inputs")
         } footer: {
-            Text("The LG lists 0x0F for its USB-C port. Not tested yet; if it doesn’t switch, try another value from Details › Inputs advertised by monitor.")
+            Text("LG monitors switch inputs reliably only with LG’s own command. Standard (VCP 0x60) makes this LG bounce back to the Mac. USB-C 0xD1 is not tested yet.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -55,6 +62,8 @@ private struct InputValueField: View {
             }
         }
         .onAppear(perform: showStored)
+        // Changing the switch command resets the values, so show the new ones.
+        .onChange(of: model.inputConfig.command) { _, _ in invalid = false; showStored() }
         .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
     }
 

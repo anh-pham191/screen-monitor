@@ -4,7 +4,12 @@ import Foundation
 
 @Test func defaultInputValues() {
     let c = InputConfig()
-    #expect([c.value(for: .mac), c.value(for: .ps5), c.value(for: .windows)] == [0x11, 0x12, 0x0F])
+    #expect(c.command == .lg)
+    #expect([c.value(for: .mac), c.value(for: .ps5), c.value(for: .windows)] == [0x90, 0x91, 0xD1])
+    let s = InputConfig.defaults(for: .standard)
+    #expect(s.command == .standard)
+    #expect([s.value(for: .mac), s.value(for: .ps5), s.value(for: .windows)] == [0x11, 0x12, 0x0F])
+    #expect(InputConfig.defaults(for: .lg) == c)
     #expect(Input.allCases.map(\.label) == ["Mac (HDMI 1)", "PS5 (HDMI 2)", "Windows (USB-C)"])
 }
 @Test func parseHexAcceptsCommonForms() {
@@ -18,6 +23,36 @@ import Foundation
 }
 @Test func inputConfigRoundTripsJSON() throws {
     var c = InputConfig(); c.set(0x1B, for: .windows)
+    #expect(try JSONDecoder().decode(InputConfig.self, from: JSONEncoder().encode(c)) == c)
+}
+@Test func inputCommandWireValues() {
+    #expect(InputCommand.allCases == [.lg, .standard])
+    #expect(InputCommand.lg.vcp == 0xF4 && InputCommand.lg.dataAddress == 0x50)
+    #expect(InputCommand.standard.vcp == 0x60 && InputCommand.standard.dataAddress == 0x51)
+    #expect(InputCommand.allCases.map(\.label) == ["LG (recommended)", "Standard (VCP 0x60)"])
+}
+@Test func setCommandResetsValuesToThatCommandsDefaults() {
+    var c = InputConfig(); c.set(0x1B, for: .windows)
+    c.setCommand(.standard)
+    #expect(c == InputConfig.defaults(for: .standard))
+    c.set(0x13, for: .ps5)
+    c.setCommand(.lg)
+    #expect(c == InputConfig())
+}
+@Test func legacyInputConfigDecodesAsStandard() throws {
+    // Configs saved before the LG command existed hold standard VCP 0x60 values.
+    let c = try JSONDecoder().decode(InputConfig.self, from: Data(#"{"mac":17,"ps5":18,"windows":15}"#.utf8))
+    #expect(c.command == .standard)
+    #expect([c.mac, c.ps5, c.windows] == [17, 18, 15])
+}
+@Test func partialInputConfigFallsBackPerKey() throws {
+    let lg = try JSONDecoder().decode(InputConfig.self, from: Data(#"{"command":"lg","ps5":146}"#.utf8))
+    #expect(lg.command == .lg && [lg.mac, lg.ps5, lg.windows] == [0x90, 146, 0xD1])
+    let std = try JSONDecoder().decode(InputConfig.self, from: Data(#"{"windows":27}"#.utf8))
+    #expect(std.command == .standard && [std.mac, std.ps5, std.windows] == [0x11, 0x12, 27])
+}
+@Test func standardInputConfigRoundTripsJSON() throws {
+    var c = InputConfig.defaults(for: .standard); c.set(0x1B, for: .windows)
     #expect(try JSONDecoder().decode(InputConfig.self, from: JSONEncoder().encode(c)) == c)
 }
 @Test func coalescesRapidSubmits() {

@@ -52,15 +52,16 @@ public final class DDCController: @unchecked Sendable {
         throw DDCError.noReply(code: code)
     }
 
-    public func write(_ code: UInt8, value: UInt16) throws {
+    /// `dataAddress` is 0x51 for standard VCP; LG's own input command needs 0x50.
+    public func write(_ code: UInt8, value: UInt16, dataAddress: UInt32 = DDCPacket.dataAddress) throws {
         lock.lock(); defer { lock.unlock() }
         waitForGap()
         defer { lastFinished = .now() }
-        let packet = DDCPacket.setRequest(code, value: value)
+        let packet = DDCPacket.setRequest(code, value: value, dataAddress: dataAddress)
         // The LG can drop a lone set, so send it twice and only fail if neither went out.
-        let first = transport.write(dataAddress: DDCPacket.dataAddress, bytes: packet)
+        let first = transport.write(dataAddress: dataAddress, bytes: packet)
         sleep(Self.setWait)
-        let second = transport.write(dataAddress: DDCPacket.dataAddress, bytes: packet)
+        let second = transport.write(dataAddress: dataAddress, bytes: packet)
         sleep(Self.setWait)
         if !first && !second { throw DDCError.writeFailed(code: code) }
     }

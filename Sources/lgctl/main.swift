@@ -9,7 +9,7 @@ func fail(_ message: String, status: Int32) -> Never {
 func hex(_ text: String) -> UInt8? { UInt8(text, radix: 16) }
 
 let args = Array(CommandLine.arguments.dropFirst())
-let usage = "usage: lgctl read <hex> [--raw] | set <hex> <hex> | caps | info"
+let usage = "usage: lgctl read <hex> [--raw] | set <vcp> <value> [--addr <hex>] | caps | info"
 
 guard let command = args.first else { fail(usage, status: 2) }
 
@@ -27,11 +27,17 @@ case ("read", 2...3):
     } catch {
         fail("\(error)", status: 1)
     }
-case ("set", 3):
+case ("set", 3), ("set", 5):
     guard let code = hex(args[1]), let value = UInt16(args[2], radix: 16) else { fail(usage, status: 2) }
+    // LG's own input command (f4) goes to data address 50 rather than the standard 51.
+    var address = DDCPacket.dataAddress
+    if args.count == 5 {
+        guard args[3] == "--addr", let parsed = hex(args[4]) else { fail(usage, status: 2) }
+        address = UInt32(parsed)
+    }
     guard let transport = findExternalTransport() else { fail("LG not connected", status: 1) }
     do {
-        try DDCController(transport: transport).write(code, value: value)
+        try DDCController(transport: transport).write(code, value: value, dataAddress: address)
         print("ok")
     } catch {
         fail("\(error)", status: 1)

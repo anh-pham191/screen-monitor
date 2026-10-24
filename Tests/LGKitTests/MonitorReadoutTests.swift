@@ -82,7 +82,8 @@ private let lgDetails = DisplayDetails(edid: nil, connection: "HDMI", pixelWidth
     var custom = InputConfig(); custom.set(0x1B, for: .windows)
     #expect(InputConfig.decodeOrDefault(try JSONEncoder().encode(custom)) == custom)
     #expect(InputConfig.decodeOrDefault(nil) == InputConfig())
-    // Synthesised Decodable needs every key, so a partial or older blob must not crash or half-load.
-    #expect(InputConfig.decodeOrDefault(Data(#"{"mac":17}"#.utf8)) == InputConfig())
+    // An older blob (no command) holds standard values; any missing key takes the standard default.
+    var legacy = InputConfig.defaults(for: .standard); legacy.set(17, for: .mac)
+    #expect(InputConfig.decodeOrDefault(Data(#"{"mac":17}"#.utf8)) == legacy)
     #expect(InputConfig.decodeOrDefault(Data("garbage".utf8)) == InputConfig())
 }

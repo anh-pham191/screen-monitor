@@ -5,6 +5,7 @@ import Testing
 final class FakeTransport: I2CTransport {
     var queue: [[UInt8]?]
     var writes: [[UInt8]] = []
+    var writeAddresses: [UInt32] = []
     var readCounts: [Int] = []
     var writeSucceeds = true
 
@@ -12,6 +13,7 @@ final class FakeTransport: I2CTransport {
 
     func write(dataAddress: UInt32, bytes: [UInt8]) -> Bool {
         writes.append(bytes)
+        writeAddresses.append(dataAddress)
         return writeSucceeds
     }
 
@@ -50,6 +52,15 @@ final class FakeTransport: I2CTransport {
         try DDCController(transport: t, sleep: { sleeps.append($0) }).write(VCP.inputSource, value: 0x12)
         #expect(t.writes == [DDCPacket.setRequest(0x60, value: 0x12), DDCPacket.setRequest(0x60, value: 0x12)])
         #expect(sleeps.contains(20_000))
+        #expect(t.writeAddresses == [0x51, 0x51])
+    }
+
+    @Test func writeSendsLGCommandToItsDataAddress() throws {
+        let t = FakeTransport(reads: [])
+        try DDCController(transport: t, sleep: { _ in }).write(0xF4, value: 0x91, dataAddress: 0x50)
+        let packet: [UInt8] = [0x84, 0x03, 0xF4, 0x00, 0x91, 0xDC]
+        #expect(t.writes == [packet, packet])
+        #expect(t.writeAddresses == [0x50, 0x50])
     }
 
     @Test func enforcesGapBetweenCommands() throws {

@@ -20,20 +20,20 @@ public struct VCPReading: Equatable, Sendable {
 /// Pure DDC/CI packet encoding and decoding; no I/O.
 public enum DDCPacket {
     static let chipAddress: UInt32 = 0x37
-    static let dataAddress: UInt32 = 0x51
+    public static let dataAddress: UInt32 = 0x51
 
-    // The checksum seeds with the destination (0x6E) and source (0x51) bytes,
+    // The checksum seeds with the destination (0x6E) and data-address bytes,
     // which the transport sends but the payload doesn't contain.
-    private static func withChecksum(_ body: [UInt8]) -> [UInt8] {
-        body + [body.reduce(0x6E ^ 0x51, ^)]
+    private static func withChecksum(_ body: [UInt8], dataAddress: UInt32 = dataAddress) -> [UInt8] {
+        body + [body.reduce(0x6E ^ UInt8(truncatingIfNeeded: dataAddress), ^)]
     }
 
     static func getRequest(_ code: UInt8) -> [UInt8] {
         withChecksum([0x82, 0x01, code])
     }
 
-    static func setRequest(_ code: UInt8, value: UInt16) -> [UInt8] {
-        withChecksum([0x84, 0x03, code, UInt8(value >> 8), UInt8(value & 0xFF)])
+    static func setRequest(_ code: UInt8, value: UInt16, dataAddress: UInt32 = DDCPacket.dataAddress) -> [UInt8] {
+        withChecksum([0x84, 0x03, code, UInt8(value >> 8), UInt8(value & 0xFF)], dataAddress: dataAddress)
     }
 
     static func capabilitiesRequest(offset: UInt16) -> [UInt8] {
