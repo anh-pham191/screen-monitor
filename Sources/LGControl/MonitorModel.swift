@@ -14,11 +14,23 @@ final class MonitorModel: ObservableObject {
     @Published private(set) var contrastMax: Double = 100
     @Published private(set) var volumeMax: Double = 100
     @Published private(set) var muted = false
-    /// Starts on the Mac: the app is opened there, and the LG reports input 0 whatever it shows,
+    /// Starts on the Mac's port: the app is opened there, and the LG reports input 0 whatever it shows,
     /// so a remembered input from an earlier session (maybe a switch that bounced back) would lie.
-    @Published private(set) var lastInput: Input? = .mac
+    @Published private(set) var lastInput: Input?
+    /// The port this Mac is plugged into.
+    @Published var macPort: Input {
+        didSet {
+            defaults.set(macPort.rawValue, forKey: Keys.macPort)
+            // Still on the Mac, now under its new port.
+            if lastInput == oldValue { lastInput = macPort }
+        }
+    }
     @Published var inputConfig: InputConfig {
-        didSet { defaults.set(try? JSONEncoder().encode(inputConfig), forKey: Keys.inputConfig) }
+        didSet {
+            defaults.set(try? JSONEncoder().encode(inputConfig), forKey: Keys.inputConfig)
+            // Any change that isn't the automatic pick is the user's own.
+            if !applyingAutomaticCommand { commandIsAutomatic = false }
+        }
     }
     @Published private(set) var raw: [UInt8: VCPReading] = [:]
     @Published private(set) var details: DisplayDetails?
@@ -62,6 +74,7 @@ final class MonitorModel: ObservableObject {
 
     private enum Keys {
         static let inputConfig = "inputConfig"
+        static let macPort = "macPort"
         static let keysEnabled = "keysEnabled"
         static let splitEnabled = "splitEnabled"
         static let syncEnabled = "syncEnabled"
@@ -89,6 +102,11 @@ final class MonitorModel: ObservableObject {
     /// One delayed refresh at a time: a burst of screen or wake notifications shares it.
     private var delayedRefresh: DispatchWorkItem?
     private var keyTapRetry: Timer?
+    /// True while nothing was ever saved and the user hasn't edited the config since, so the
+    /// command may follow the screen's maker. `seenManufacturers` keeps it to once per maker.
+    private var commandIsAutomatic: Bool
+    private var applyingAutomaticCommand = false
+    private var seenManufacturers: Set<String> = []
     private let keyTap = MediaKeyTap()
     private let dragMonitor = WindowDragMonitor()
     private let hud = HUD()
@@ -99,6 +117,10 @@ final class MonitorModel: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         inputConfig = InputConfig.decodeOrDefault(defaults.data(forKey: Keys.inputConfig))
+        commandIsAutomatic = defaults.data(forKey: Keys.inputConfig) == nil
+        let storedPort = defaults.string(forKey: Keys.macPort).flatMap(Input.init(rawValue:)) ?? .hdmi1
+        macPort = storedPort
+        lastInput = storedPort
         keysEnabled = defaults.object(forKey: Keys.keysEnabled) as? Bool ?? true
         splitEnabled = defaults.object(forKey: Keys.splitEnabled) as? Bool ?? true
         let storedOffset = defaults.integer(forKey: Keys.syncOffset)
@@ -171,6 +193,7 @@ final class MonitorModel: ObservableObject {
             DispatchQueue.main.async {
                 self.details = details
                 self.lgName = details?.edid?.name ?? Self.defaultLGName
+                self.applyAutomaticCommand(manufacturerID: details?.edid?.manufacturerID)
                 self.apply(hasTransport: transport != nil, readout: readout)
                 self.refreshing = false
                 if self.refreshCoalescer.finished() {
@@ -261,10 +284,22 @@ final class MonitorModel: ObservableObject {
         }
     }
 
+    /// With nothing ever saved, the first screen of each maker picks the command that suits it.
+    /// Assigning always persists, so only assign when the value changes.
+    private func applyAutomaticCommand(manufacturerID: String?) {
+        guard commandIsAutomatic, let m = manufacturerID, seenManufacturers.insert(m).inserted else { return }
+        let auto = InputConfig.defaults(for: .automatic(manufacturerID: m))
+        guard auto != inputConfig else { return }
+        applyingAutomaticCommand = true
+        inputConfig = auto
+        applyingAutomaticCommand = false
+    }
+
     func switchTo(_ input: Input) {
-        if input != .mac { recordSoundOutput() }
-        if WindowPlacement.shouldMoveToBuiltIn(target: input, builtInAvailable: WindowMover.builtInAvailable()) {
-            // Leaving the Mac input blanks the LG, so get every window somewhere visible first.
+        if input != macPort { recordSoundOutput() }
+        if WindowPlacement.shouldMoveOff(target: input, macPort: macPort,
+                                         destinationAvailable: WindowMover.builtInAvailable()) {
+            // Leaving the Mac's port blanks the LG, so get every window somewhere visible first.
             WindowShuffler.moveAllWindowsToBuiltIn()
         }
         let value = inputConfig.value(for: input)
@@ -282,15 +317,15 @@ final class MonitorModel: ObservableObject {
                 if outcome.succeeded {
                     // Back on the Mac input, or found again after being lost: the LG answers DDC
                     // again only once it has settled on the new input, so read it then.
-                    if !self.connected || input == .mac { self.scheduleRefresh(after: 1.75) }
-                    if input == .mac {
+                    if !self.connected || input == self.macPort { self.scheduleRefresh(after: 1.75) }
+                    if input == self.macPort {
                         WindowShuffler.restoreWindows()
                         self.restoreSoundOutput()
                     }
                     self.lastInput = input
                 } else {
                     // The LG never left the Mac, so the moved windows belong back on it now.
-                    if input != .mac { WindowShuffler.restoreWindows() }
+                    if input != self.macPort { WindowShuffler.restoreWindows() }
                     self.refresh()
                 }
             }
@@ -305,7 +340,7 @@ final class MonitorModel: ObservableObject {
     private func recordSoundOutput() {
         lgWasSoundOutput = AudioRestore.lgWasOutput(previous: lgWasSoundOutput,
                                                     currentIsLG: AudioOutput.lgIsSoundOutput(lgName: lgName),
-                                                    leavingFromMac: lastInput == .mac,
+                                                    leavingFromMac: lastInput == macPort,
                                                     restorePending: audioRestoreTimer != nil)
         audioRestoreTimer?.invalidate()
         audioRestoreTimer = nil

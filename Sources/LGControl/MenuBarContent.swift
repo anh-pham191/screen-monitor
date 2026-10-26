@@ -120,8 +120,8 @@ private struct KeepAwakeSection: View {
                          "until " + $0.formatted(Date.FormatStyle().hour().minute())
                      } ?? "",
                      stop: keepAwake.stop)
-        case .ps5 where keepAwake.decision.hold:
-            // No stop button: the PS5 rule is a setting, and the card can't switch it off.
+        case .otherInput where keepAwake.decision.hold:
+            // No stop button: the away rule is a setting, and the card can't switch it off.
             RingCard(progress: 1, title: "PS5", subtitle: "while the PS5 is on", stop: nil)
         default:
             EmptyView()

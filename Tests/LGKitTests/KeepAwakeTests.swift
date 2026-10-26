@@ -4,12 +4,12 @@ import LGKit
 
 private let t0 = Date(timeIntervalSinceReferenceDate: 800_000_000)
 
-private func inputs(timerEnd: Date? = nil, ps5Showing: Bool = false, ps5RuleOn: Bool = true,
+private func inputs(timerEnd: Date? = nil, awayFromMac: Bool = false, awayRuleOn: Bool = true,
                     onBattery: Bool = false, batteryPercent: Int? = nil, batteryThreshold: Int = 20,
-                    ps5Since: Date? = t0) -> KeepAwakeInputs {
-    KeepAwakeInputs(timerEnd: timerEnd, now: t0, ps5Showing: ps5Showing, ps5RuleOn: ps5RuleOn,
+                    awaySince: Date? = t0) -> KeepAwakeInputs {
+    KeepAwakeInputs(timerEnd: timerEnd, now: t0, awayFromMac: awayFromMac, awayRuleOn: awayRuleOn,
                     onBattery: onBattery, batteryPercent: batteryPercent,
-                    batteryThreshold: batteryThreshold, ps5Since: ps5Since)
+                    batteryThreshold: batteryThreshold, awaySince: awaySince)
 }
 
 private func decision(_ hold: Bool, _ reason: KeepAwakeReason?, clear: Bool = false,
@@ -29,8 +29,8 @@ private func decision(_ hold: Bool, _ reason: KeepAwakeReason?, clear: Bool = fa
     #expect(d == decision(true, .timer(remaining: 900)))
 }
 
-@Test func runningTimerBeatsPS5Reason() {
-    let d = KeepAwakePolicy.evaluate(inputs(timerEnd: t0 + 60, ps5Showing: true))
+@Test func runningTimerBeatsAwayReason() {
+    let d = KeepAwakePolicy.evaluate(inputs(timerEnd: t0 + 60, awayFromMac: true))
     #expect(d == decision(true, .timer(remaining: 60)))
 }
 
@@ -39,27 +39,27 @@ private func decision(_ hold: Bool, _ reason: KeepAwakeReason?, clear: Bool = fa
     #expect(KeepAwakePolicy.evaluate(inputs(timerEnd: t0 - 5)) == decision(false, nil, clear: true, stopped: .timerFinished))
 }
 
-@Test func expiredTimerFallsThroughToPS5() {
-    let d = KeepAwakePolicy.evaluate(inputs(timerEnd: t0 - 1, ps5Showing: true))
-    #expect(d == decision(true, .ps5, clear: true, stopped: nil))
+@Test func expiredTimerFallsThroughToAway() {
+    let d = KeepAwakePolicy.evaluate(inputs(timerEnd: t0 - 1, awayFromMac: true))
+    #expect(d == decision(true, .otherInput, clear: true, stopped: nil))
 }
 
-@Test func ps5HoldsOnlyWhenRuleOnAndShowing() {
-    #expect(KeepAwakePolicy.evaluate(inputs(ps5Showing: true)) == decision(true, .ps5))
-    #expect(KeepAwakePolicy.evaluate(inputs(ps5Showing: true, ps5RuleOn: false)) == .idle)
-    #expect(KeepAwakePolicy.evaluate(inputs(ps5Showing: false, ps5RuleOn: true)) == .idle)
+@Test func awayHoldsOnlyWhenRuleOnAndShowing() {
+    #expect(KeepAwakePolicy.evaluate(inputs(awayFromMac: true)) == decision(true, .otherInput))
+    #expect(KeepAwakePolicy.evaluate(inputs(awayFromMac: true, awayRuleOn: false)) == .idle)
+    #expect(KeepAwakePolicy.evaluate(inputs(awayFromMac: false, awayRuleOn: true)) == .idle)
 }
 
-@Test func ps5CapIsEightHours() {
+@Test func awayCapIsEightHours() {
     let cap: TimeInterval = 8 * 3600
-    #expect(KeepAwakePolicy.evaluate(inputs(ps5Showing: true, ps5Since: t0 - (cap - 1))) == decision(true, .ps5))
-    #expect(KeepAwakePolicy.evaluate(inputs(ps5Showing: true, ps5Since: t0 - cap)) == .idle)
-    #expect(KeepAwakePolicy.evaluate(inputs(ps5Showing: true, ps5Since: t0 - (cap + 60))) == .idle)
+    #expect(KeepAwakePolicy.evaluate(inputs(awayFromMac: true, awaySince: t0 - (cap - 1))) == decision(true, .otherInput))
+    #expect(KeepAwakePolicy.evaluate(inputs(awayFromMac: true, awaySince: t0 - cap)) == .idle)
+    #expect(KeepAwakePolicy.evaluate(inputs(awayFromMac: true, awaySince: t0 - (cap + 60))) == .idle)
 }
 
-@Test func ps5WithoutStartTimeDoesNotHold() {
+@Test func awayWithoutStartTimeDoesNotHold() {
     // No start time means the cap can't be enforced, so fail safe.
-    #expect(KeepAwakePolicy.evaluate(inputs(ps5Showing: true, ps5Since: nil)) == .idle)
+    #expect(KeepAwakePolicy.evaluate(inputs(awayFromMac: true, awaySince: nil)) == .idle)
 }
 
 @Test func lowBatteryBeatsTimer() {
@@ -67,8 +67,8 @@ private func decision(_ hold: Bool, _ reason: KeepAwakeReason?, clear: Bool = fa
     #expect(d == decision(false, nil, clear: true, stopped: .lowBattery(threshold: 20)))
 }
 
-@Test func lowBatteryBeatsPS5() {
-    let d = KeepAwakePolicy.evaluate(inputs(ps5Showing: true, onBattery: true, batteryPercent: 10, batteryThreshold: 25))
+@Test func lowBatteryBeatsAway() {
+    let d = KeepAwakePolicy.evaluate(inputs(awayFromMac: true, onBattery: true, batteryPercent: 10, batteryThreshold: 25))
     #expect(d == decision(false, nil, clear: false, stopped: .lowBattery(threshold: 25)))
 }
 
@@ -79,9 +79,9 @@ private func decision(_ hold: Bool, _ reason: KeepAwakeReason?, clear: Bool = fa
 
 @Test func lowBatteryWithNothingToStopReportsNothing() {
     #expect(KeepAwakePolicy.evaluate(inputs(onBattery: true, batteryPercent: 5)) == .idle)
-    // PS5 showing but the rule is off, or past its cap: nothing would have held.
-    #expect(KeepAwakePolicy.evaluate(inputs(ps5Showing: true, ps5RuleOn: false, onBattery: true, batteryPercent: 5)) == .idle)
-    #expect(KeepAwakePolicy.evaluate(inputs(ps5Showing: true, onBattery: true, batteryPercent: 5, ps5Since: t0 - 9 * 3600)) == .idle)
+    // Away from the Mac but the rule is off, or past its cap: nothing would have held.
+    #expect(KeepAwakePolicy.evaluate(inputs(awayFromMac: true, awayRuleOn: false, onBattery: true, batteryPercent: 5)) == .idle)
+    #expect(KeepAwakePolicy.evaluate(inputs(awayFromMac: true, onBattery: true, batteryPercent: 5, awaySince: t0 - 9 * 3600)) == .idle)
 }
 
 @Test func unknownBatteryLevelNeverStops() {

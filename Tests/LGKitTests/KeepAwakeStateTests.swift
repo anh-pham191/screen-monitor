@@ -8,66 +8,68 @@ private let t0 = Date(timeIntervalSinceReferenceDate: 800_000_000)
 
 @Test func badgeShowsShortTextForTimer() {
     let d = KeepAwakeDecision(hold: true, reason: .timer(remaining: 3600 + 15 * 60), clearTimer: false, stopped: nil)
-    #expect(KeepAwakeState.badgeText(for: d) == "1h 15m")
+    #expect(KeepAwakeState.badgeText(for: d, port: nil) == "1h 15m")
 }
 
-@Test func badgeShowsPS5ForPS5Rule() {
-    let d = KeepAwakeDecision(hold: true, reason: .ps5, clearTimer: false, stopped: nil)
-    #expect(KeepAwakeState.badgeText(for: d) == "PS5")
+@Test func awayBadgeShowsThePort() {
+    let d = KeepAwakeDecision(hold: true, reason: .otherInput, clearTimer: false, stopped: nil)
+    #expect(KeepAwakeState.badgeText(for: d, port: "HDMI 2") == "HDMI 2")
+    #expect(KeepAwakeState.badgeText(for: d, port: nil) == "Input")
+    #expect(KeepAwakeState.reasonLabel(.otherInput) == "Other input")
 }
 
 @Test func badgeIsNilWhenNotHolding() {
-    #expect(KeepAwakeState.badgeText(for: .idle) == nil)
+    #expect(KeepAwakeState.badgeText(for: .idle, port: nil) == nil)
     let stopped = KeepAwakeDecision(hold: false, reason: nil, clearTimer: true, stopped: .lowBattery(threshold: 20))
-    #expect(KeepAwakeState.badgeText(for: stopped) == nil)
+    #expect(KeepAwakeState.badgeText(for: stopped, port: nil) == nil)
 }
 
 @Test func reasonLabelMatchesDesign() {
     #expect(KeepAwakeState.reasonLabel(.timer(remaining: 60)) == "Timer")
-    #expect(KeepAwakeState.reasonLabel(.ps5) == "PS5")
+    #expect(KeepAwakeState.reasonLabel(.otherInput) == "Other input")
     #expect(KeepAwakeState.reasonLabel(nil) == nil)
 }
 
 // MARK: - Tick
 
-private func tick(timerEnd: Date? = nil, ps5RuleOn: Bool = true, ps5Showing: Bool = false,
-                  ps5Since: Date? = t0, now: Date = t0) -> Bool {
-    KeepAwakeState.needsTick(timerEnd: timerEnd, ps5RuleOn: ps5RuleOn, ps5Showing: ps5Showing,
-                             ps5Since: ps5Since, now: now)
+private func tick(timerEnd: Date? = nil, awayRuleOn: Bool = true, awayFromMac: Bool = false,
+                  awaySince: Date? = t0, now: Date = t0) -> Bool {
+    KeepAwakeState.needsTick(timerEnd: timerEnd, awayRuleOn: awayRuleOn, awayFromMac: awayFromMac,
+                             awaySince: awaySince, now: now)
 }
 
 @Test func ticksWhileTimerRuns() {
-    #expect(tick(timerEnd: t0, ps5RuleOn: false))
+    #expect(tick(timerEnd: t0, awayRuleOn: false))
 }
 
-@Test func ticksWhilePS5RuleCouldHold() {
-    #expect(tick(ps5Showing: true))
-    #expect(tick(ps5Showing: true, now: t0 + KeepAwakePolicy.ps5Cap - 1))
+@Test func ticksWhileAwayRuleCouldHold() {
+    #expect(tick(awayFromMac: true))
+    #expect(tick(awayFromMac: true, now: t0 + KeepAwakePolicy.awayCap - 1))
 }
 
-@Test func idleWithoutTimerOrPS5() {
-    #expect(!tick(ps5Showing: false))
-    #expect(!tick(ps5RuleOn: false, ps5Showing: true))
+@Test func idleWithoutTimerOrAway() {
+    #expect(!tick(awayFromMac: false))
+    #expect(!tick(awayRuleOn: false, awayFromMac: true))
 }
 
-@Test func stopsTickingOncePS5CapPasses() {
-    #expect(!tick(ps5Showing: true, now: t0 + KeepAwakePolicy.ps5Cap))
+@Test func stopsTickingOnceAwayCapPasses() {
+    #expect(!tick(awayFromMac: true, now: t0 + KeepAwakePolicy.awayCap))
 }
 
-// MARK: - PS5 start time
+// MARK: - Away start time
 
-@Test func ps5SinceStartsWhenPS5Appears() {
-    #expect(KeepAwakeState.nextPS5Since(current: nil, ps5Showing: true, now: t0) == t0)
+@Test func awaySinceStartsWhenAwayBegins() {
+    #expect(KeepAwakeState.nextAwaySince(current: nil, awayFromMac: true, now: t0) == t0)
 }
 
-@Test func ps5SinceKeepsOriginalStartWhilePS5Stays() {
+@Test func awaySinceKeepsOriginalStartWhileAwayStays() {
     // Restarting the clock on every tick would defeat the 8-hour cap.
-    #expect(KeepAwakeState.nextPS5Since(current: t0, ps5Showing: true, now: t0 + 3600) == t0)
+    #expect(KeepAwakeState.nextAwaySince(current: t0, awayFromMac: true, now: t0 + 3600) == t0)
 }
 
-@Test func ps5SinceClearsOnSwitchAway() {
-    #expect(KeepAwakeState.nextPS5Since(current: t0, ps5Showing: false, now: t0 + 60) == nil)
-    #expect(KeepAwakeState.nextPS5Since(current: nil, ps5Showing: false, now: t0) == nil)
+@Test func awaySinceClearsOnSwitchAway() {
+    #expect(KeepAwakeState.nextAwaySince(current: t0, awayFromMac: false, now: t0 + 60) == nil)
+    #expect(KeepAwakeState.nextAwaySince(current: nil, awayFromMac: false, now: t0) == nil)
 }
 
 // MARK: - Last stop
@@ -84,7 +86,7 @@ private func tick(timerEnd: Date? = nil, ps5RuleOn: Bool = true, ps5Showing: Boo
 }
 
 @Test func holdingClearsLastStop() {
-    let d = KeepAwakeDecision(hold: true, reason: .ps5, clearTimer: false, stopped: nil)
+    let d = KeepAwakeDecision(hold: true, reason: .otherInput, clearTimer: false, stopped: nil)
     #expect(KeepAwakeState.nextLastStop(current: .lowBattery(threshold: 20), decision: d) == nil)
 }
 

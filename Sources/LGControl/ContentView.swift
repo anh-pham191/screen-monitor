@@ -68,7 +68,7 @@ struct HeaderCard: View {
     }
 
     private var subtitle: String {
-        if !model.connected, let input = model.lastInput, input != .mac { return "Showing \(input.label)" }
+        if !model.connected, let input = model.lastInput, input != model.macPort { return "Showing \(input.label)" }
         return model.details.map(DetailsFormat.headerSubtitle) ?? "No external display found"
     }
 }

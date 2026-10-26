@@ -8,7 +8,7 @@ import LGKit
 @MainActor
 final class KeepAwakeModel: ObservableObject {
     private enum Keys {
-        static let ps5 = "keepAwakePS5"
+        static let away = "keepAwakePS5"
         static let threshold = "keepAwakeBatteryThreshold"
     }
 
@@ -19,9 +19,9 @@ final class KeepAwakeModel: ObservableObject {
     /// Published apart from `decision` and only on change, so the menu bar label redraws
     /// when its text changes rather than every second.
     @Published private(set) var badgeText: String?
-    @Published var ps5RuleOn: Bool {
+    @Published var awayRuleOn: Bool {
         didSet {
-            defaults.set(ps5RuleOn, forKey: Keys.ps5)
+            defaults.set(awayRuleOn, forKey: Keys.away)
             evaluate()
         }
     }
@@ -39,24 +39,33 @@ final class KeepAwakeModel: ObservableObject {
     let assertion = PowerAssertion()
     private let monitor: MonitorModel
     private let defaults = UserDefaults.standard
-    private var ps5Since: Date?
+    private var awaySince: Date?
     // nonisolated(unsafe) so the nonisolated deinit can clean up: an isolated deinit needs a
     // newer runtime than macOS 14. They're only written on the main actor, and deinit runs
     // once nothing else holds the model, so there's no concurrent access.
     nonisolated(unsafe) private var tick: Timer?
     private var inputSink: AnyCancellable?
+    private var portSink: AnyCancellable?
     nonisolated(unsafe) private var wakeObserver: NSObjectProtocol?
     nonisolated(unsafe) private var terminateObserver: NSObjectProtocol?
 
     init(monitor: MonitorModel) {
         self.monitor = monitor
-        ps5RuleOn = defaults.object(forKey: Keys.ps5) as? Bool ?? true
+        awayRuleOn = defaults.object(forKey: Keys.away) as? Bool ?? true
         batteryThreshold = KeepAwakePolicy.clampThreshold(defaults.object(forKey: Keys.threshold) as? Int ?? 20)
 
         // @Published emits in willSet, so the sink must hand the new value in rather than
         // letting evaluate read the old one back from the monitor.
         inputSink = monitor.$lastInput.sink { [weak self] value in
             MainActor.assumeIsolated { self?.evaluate(lastInput: value) }
+        }
+        // Same willSet caveat. If the screen was showing the Mac's port, it still is, under the new one.
+        portSink = monitor.$macPort.dropFirst().sink { [weak self] port in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let onMac = self.monitor.lastInput == self.monitor.macPort
+                self.evaluate(lastInput: onMac ? port : self.monitor.lastInput, macPort: port)
+            }
         }
         // A sleep that happened anyway (lid closed) can outlast the timer; settle up on wake.
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -98,21 +107,22 @@ final class KeepAwakeModel: ObservableObject {
         evaluate()
     }
 
-    /// `lastInput` overrides the monitor's value for the Combine sink (see init).
-    func evaluate(lastInput override: Input?? = nil) {
+    /// `lastInput` and `macPort` override the monitor's values for the Combine sinks (see init).
+    func evaluate(lastInput override: Input?? = nil, macPort portOverride: Input? = nil) {
         let input = override ?? monitor.lastInput
+        let macPort = portOverride ?? monitor.macPort
         let now = Date()
-        let ps5Showing = input == .ps5
-        ps5Since = KeepAwakeState.nextPS5Since(current: ps5Since, ps5Showing: ps5Showing, now: now)
+        let awayFromMac = input != nil && input != macPort
+        awaySince = KeepAwakeState.nextAwaySince(current: awaySince, awayFromMac: awayFromMac, now: now)
         let power = PowerSource.read()
 
         let d = KeepAwakePolicy.evaluate(KeepAwakeInputs(
-            timerEnd: timerEnd, now: now, ps5Showing: ps5Showing, ps5RuleOn: ps5RuleOn,
+            timerEnd: timerEnd, now: now, awayFromMac: awayFromMac, awayRuleOn: awayRuleOn,
             onBattery: power.onBattery, batteryPercent: power.percent,
-            batteryThreshold: batteryThreshold, ps5Since: ps5Since))
+            batteryThreshold: batteryThreshold, awaySince: awaySince))
 
         if d.hold {
-            assertion.hold(reason: d.reason == .ps5 ? "The LG is showing the PS5" : "Keep Awake timer")
+            assertion.hold(reason: d.reason == .otherInput ? "The screen is showing another input" : "Keep Awake timer")
         } else {
             assertion.release()
         }
@@ -122,10 +132,10 @@ final class KeepAwakeModel: ObservableObject {
         // A running timer's remaining time differs every tick, so this publishes once a second
         // and the card's clock and ring move with it.
         if d != decision { decision = d }
-        let badge = KeepAwakeState.badgeText(for: d)
+        let badge = KeepAwakeState.badgeText(for: d, port: input?.label)
         if badge != badgeText { badgeText = badge }
 
-        updateTick(ps5Showing: ps5Showing, now: now)
+        updateTick(awayFromMac: awayFromMac, now: now)
     }
 
     private func clearTimer() {
@@ -133,9 +143,9 @@ final class KeepAwakeModel: ObservableObject {
         activePreset = nil
     }
 
-    private func updateTick(ps5Showing: Bool, now: Date) {
-        let needed = KeepAwakeState.needsTick(timerEnd: timerEnd, ps5RuleOn: ps5RuleOn,
-                                              ps5Showing: ps5Showing, ps5Since: ps5Since, now: now)
+    private func updateTick(awayFromMac: Bool, now: Date) {
+        let needed = KeepAwakeState.needsTick(timerEnd: timerEnd, awayRuleOn: awayRuleOn,
+                                              awayFromMac: awayFromMac, awaySince: awaySince, now: now)
         if needed, tick == nil {
             let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.evaluate() }
