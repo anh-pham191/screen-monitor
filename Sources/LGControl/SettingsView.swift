@@ -175,7 +175,7 @@ private struct KeepAwakeSection: View {
         Section {
             Toggle(isOn: $keepAwake.awayRuleOn) {
                 Text("Keep awake while the screen shows another input")
-                Text("Your Mac won’t sleep meanwhile; ends when you switch back.")
+                Text("Your Mac won’t sleep while it’s on another input; ends when you switch back.")
             }
             .toggleStyle(.switch)
             VStack(alignment: .leading, spacing: 6) {

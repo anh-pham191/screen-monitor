@@ -24,25 +24,36 @@ public struct DisplayDetails: Equatable, Sendable {
 }
 
 public enum DisplayDetailsReader {
-    /// Returns nil when only the built-in display is online.
+    /// Details of the screen the EDID belongs to. Nil without an EDID, or when no online display
+    /// matches it (another screen's mode must never be shown under this screen's name).
     public static func read() -> DisplayDetails? {
+        let (edid, connection) = readEDID()
+        guard let edid else { return nil }
         var ids = [CGDirectDisplayID](repeating: 0, count: 16)
         var count: UInt32 = 0
-        guard CGGetOnlineDisplayList(UInt32(ids.count), &ids, &count) == .success,
-              let id = ids.prefix(Int(count)).first(where: { CGDisplayIsBuiltin($0) == 0 }) else { return nil }
+        guard CGGetOnlineDisplayList(UInt32(ids.count), &ids, &count) == .success else { return nil }
+        let screens = ids.prefix(Int(count)).map {
+            ScreenInfo(displayID: $0, isBuiltIn: CGDisplayIsBuiltin($0) != 0,
+                       vendor: CGDisplayVendorNumber($0), model: CGDisplayModelNumber($0),
+                       serial: CGDisplaySerialNumber($0))
+        }
+        guard let id = displayID(among: screens, matching: HardwareScreenID(edid: edid)) else { return nil }
 
         let bounds = CGDisplayBounds(id)
         let mode = CGDisplayCopyDisplayMode(id)
         // A refresh rate of 0 means "not reported" (common on HDMI/virtual modes), not 0 Hz.
         let hz = mode.map(\.refreshRate).flatMap { $0 > 0 ? $0 : nil }
-        let (edid, connection) = readEDID()
-
         return DisplayDetails(
             edid: edid, connection: connection,
             pixelWidth: mode?.pixelWidth ?? Int(bounds.width),
             pixelHeight: mode?.pixelHeight ?? Int(bounds.height),
             pointWidth: Int(bounds.width), pointHeight: Int(bounds.height),
             refreshHz: hz)
+    }
+
+    /// The first non-built-in screen with the given vendor and model.
+    static func displayID(among screens: [ScreenInfo], matching hardware: HardwareScreenID?) -> UInt32? {
+        ScreenClassifier.classify(screens, hardware: hardware).first { $0.value == .hardware }?.key
     }
 
     /// The EDID lives in a `Metadata` dictionary on an IOService entry, not on the display node itself.

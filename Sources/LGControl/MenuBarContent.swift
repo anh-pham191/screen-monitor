@@ -32,7 +32,7 @@ struct MenuBarContent: View {
                             set: model.setBrightness)
                 ValueSlider(title: "Volume", value: model.volume, maximum: model.volumeMax,
                             valueText: model.muted ? "Muted" : nil, set: model.setVolume)
-            } else {
+            } else if model.details?.edid != nil {
                 HStack {
                     Text("Not answering").foregroundStyle(.secondary)
                     Spacer()

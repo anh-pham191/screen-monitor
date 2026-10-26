@@ -23,6 +23,7 @@ final class SoftwareBrightness: ObservableObject {
     private var levels: SoftwareLevels
     /// Only screens below 100 have one.
     private var overlays: [String: OverlayPanel] = [:]
+    private var saveTask: Task<Void, Never>?
     private var screenObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
     /// Called after every rebuild; the key tap uses it to let go of screens that may be gone.
@@ -65,9 +66,10 @@ final class SoftwareBrightness: ObservableObject {
         onRebuild?()
     }
 
+    /// The overlay follows at once; the level is written to defaults once changes pause.
     func setLevel(_ level: Int, for key: String) {
         levels.set(level, for: key)
-        saveLevels()
+        scheduleSave()
         let clamped = levels.level(for: key)
         if let index = screens.firstIndex(where: { $0.id == key }), screens[index].level != clamped {
             screens[index] = SoftwareScreen(id: key, name: screens[index].name, level: clamped)
@@ -89,7 +91,18 @@ final class SoftwareBrightness: ObservableObject {
         hud.show(.brightness, level: HUDLevel.fraction(next, maximum: 100), on: screen)
     }
 
+    private func scheduleSave() {
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            self?.saveLevels()
+        }
+    }
+
     private func saveLevels() {
+        saveTask?.cancel()
+        saveTask = nil
         defaults.set(try? JSONEncoder().encode(levels), forKey: Self.defaultsKey)
     }
 

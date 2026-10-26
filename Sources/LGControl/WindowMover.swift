@@ -18,7 +18,9 @@ enum WindowMover {
 
     static func moveAppWindows(to destination: NSScreen) {
         let area = destination.visibleFrame
-        for window in appWindows() where window.screen != destination {
+        // Only windows on the hardware screen; windows on other screens stay put.
+        guard let hardware = ScreenCatalog.hardwareScreen() else { return }
+        for window in appWindows() where window.screen == hardware && window.screen != destination {
             let width = min(window.frame.width, area.width)
             let height = min(window.frame.height, area.height)
             let frame = NSRect(x: area.midX - width / 2, y: area.midY - height / 2, width: width, height: height)
