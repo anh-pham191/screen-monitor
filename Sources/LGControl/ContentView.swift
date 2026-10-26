@@ -7,22 +7,30 @@ struct ContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HeaderCard()
-            // Always shown: they work even while a refresh says the screen isn't answering, and
-            // these are how Anh gets it back. `switchTo` finds the transport again itself.
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Input").font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
-                InputSegments()
-                if !model.connected {
-                    Text("Input buttons always work, so you can switch the screen back to this Mac.")
-                        .font(.caption2).foregroundStyle(.secondary)
+            if model.hasHardwareScreen {
+                HeaderCard()
+                // Shown even while a refresh says the screen isn't answering: they still work, and
+                // these are how Anh gets it back. `switchTo` finds the transport again itself.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Input").font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
+                    InputSegments()
+                    if !model.connected {
+                        Text("Input buttons always work, so you can switch the screen back to this Mac.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
                 }
-            }
-            if model.connected {
-                PictureBox()
-                SoundBox()
+                if model.connected {
+                    PictureBox()
+                    SoundBox()
+                } else {
+                    NotConnectedBox()
+                }
             } else {
-                NotConnectedBox()
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("No screen with hardware control").font(.headline)
+                    Text("Inputs, contrast and volume appear when one is plugged in. Brightness and warmth for other screens are in the menu bar.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             Spacer(minLength: 0)
             HStack {

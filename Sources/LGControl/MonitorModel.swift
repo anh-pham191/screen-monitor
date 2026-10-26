@@ -7,6 +7,9 @@ import LGKit
 final class MonitorModel: ObservableObject {
     @Published private(set) var connected = false
     @Published private(set) var hasTransport = false
+    /// A screen with hardware control is plugged in, answering or not (it answers nothing while
+    /// it can't find its signal, but still shows up). Inputs and its controls only make sense then.
+    var hasHardwareScreen: Bool { details?.edid != nil || hasTransport }
     @Published var brightness: Double = 0
     @Published var contrast: Double = 0
     @Published var volume: Double = 0

@@ -9,41 +9,41 @@ struct MenuBarContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                if let name = model.details?.edid?.name {
-                    Text(name).font(.headline).lineLimit(1)
-                } else {
-                    Text("No screen with hardware control").foregroundStyle(.secondary).lineLimit(1)
-                }
-                Spacer()
-                Text(model.details?.connection ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            }
-            // Always shown, like the main window: they're the way back when the screen isn't answering.
-            VStack(spacing: 2) {
-                ForEach(Input.allCases, id: \.self) { input in
-                    MenuRow(title: input.label, detail: input == model.macPort ? "This Mac" : nil,
-                            checked: model.lastInput == input,
-                            highlighted: model.lastInput == input) { model.switchTo(input) }
-                }
-            }
-            Divider()
-            if model.connected {
-                ValueSlider(title: "Brightness", value: model.brightness, maximum: model.brightnessMax,
-                            set: model.setBrightness)
-                ValueSlider(title: "Volume", value: model.volume, maximum: model.volumeMax,
-                            valueText: model.muted ? "Muted" : nil, set: model.setVolume)
-            } else if model.details?.edid != nil {
-                HStack {
-                    Text("Not answering").foregroundStyle(.secondary)
+            // Inputs only mean something while the hardware screen is plugged in; without it (an
+            // office with only DisplayLink screens) the panel starts with those screens instead.
+            if model.hasHardwareScreen {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(model.details?.edid?.name ?? "Screen").font(.headline).lineLimit(1)
                     Spacer()
-                    RetryButton()
+                    Text(model.details?.connection ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                // Shown even while the screen isn't answering: they're the way back to this Mac.
+                VStack(spacing: 2) {
+                    ForEach(Input.allCases, id: \.self) { input in
+                        MenuRow(title: input.label, detail: input == model.macPort ? "This Mac" : nil,
+                                checked: model.lastInput == input,
+                                highlighted: model.lastInput == input) { model.switchTo(input) }
+                    }
+                }
+                Divider()
+                if model.connected {
+                    ValueSlider(title: "Brightness", value: model.brightness, maximum: model.brightnessMax,
+                                set: model.setBrightness)
+                    ValueSlider(title: "Volume", value: model.volume, maximum: model.volumeMax,
+                                valueText: model.muted ? "Muted" : nil, set: model.setVolume)
+                } else {
+                    HStack {
+                        Text("Not answering").foregroundStyle(.secondary)
+                        Spacer()
+                        RetryButton()
+                    }
                 }
             }
-            ForEach(software.screens) { screen in
-                Divider()
+            ForEach(Array(software.screens.enumerated()), id: \.element.id) { index, screen in
+                if model.hasHardwareScreen || index > 0 { Divider() }
                 SoftwareScreenRow(screen: screen)
             }
-            Divider()
+            if model.hasHardwareScreen || !software.screens.isEmpty { Divider() }
             KeepAwakeSection()
             Divider()
             VStack(spacing: 2) {
