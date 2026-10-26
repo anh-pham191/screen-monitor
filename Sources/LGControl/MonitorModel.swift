@@ -19,7 +19,11 @@ final class MonitorModel: ObservableObject {
     @Published private(set) var lastInput: Input?
     /// The port this Mac is plugged into.
     @Published var macPort: Input {
-        didSet { defaults.set(macPort.rawValue, forKey: Keys.macPort) }
+        didSet {
+            defaults.set(macPort.rawValue, forKey: Keys.macPort)
+            // Still on the Mac, now under its new port.
+            if lastInput == oldValue { lastInput = macPort }
+        }
     }
     @Published var inputConfig: InputConfig {
         didSet {

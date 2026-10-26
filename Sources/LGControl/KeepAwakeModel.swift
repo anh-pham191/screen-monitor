@@ -45,6 +45,7 @@ final class KeepAwakeModel: ObservableObject {
     // once nothing else holds the model, so there's no concurrent access.
     nonisolated(unsafe) private var tick: Timer?
     private var inputSink: AnyCancellable?
+    private var portSink: AnyCancellable?
     nonisolated(unsafe) private var wakeObserver: NSObjectProtocol?
     nonisolated(unsafe) private var terminateObserver: NSObjectProtocol?
 
@@ -57,6 +58,14 @@ final class KeepAwakeModel: ObservableObject {
         // letting evaluate read the old one back from the monitor.
         inputSink = monitor.$lastInput.sink { [weak self] value in
             MainActor.assumeIsolated { self?.evaluate(lastInput: value) }
+        }
+        // Same willSet caveat. If the screen was showing the Mac's port, it still is, under the new one.
+        portSink = monitor.$macPort.dropFirst().sink { [weak self] port in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let onMac = self.monitor.lastInput == self.monitor.macPort
+                self.evaluate(lastInput: onMac ? port : self.monitor.lastInput, macPort: port)
+            }
         }
         // A sleep that happened anyway (lid closed) can outlast the timer; settle up on wake.
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -98,11 +107,12 @@ final class KeepAwakeModel: ObservableObject {
         evaluate()
     }
 
-    /// `lastInput` overrides the monitor's value for the Combine sink (see init).
-    func evaluate(lastInput override: Input?? = nil) {
+    /// `lastInput` and `macPort` override the monitor's values for the Combine sinks (see init).
+    func evaluate(lastInput override: Input?? = nil, macPort portOverride: Input? = nil) {
         let input = override ?? monitor.lastInput
+        let macPort = portOverride ?? monitor.macPort
         let now = Date()
-        let awayFromMac = input != nil && input != monitor.macPort
+        let awayFromMac = input != nil && input != macPort
         awaySince = KeepAwakeState.nextAwaySince(current: awaySince, awayFromMac: awayFromMac, now: now)
         let power = PowerSource.read()
 
@@ -122,7 +132,7 @@ final class KeepAwakeModel: ObservableObject {
         // A running timer's remaining time differs every tick, so this publishes once a second
         // and the card's clock and ring move with it.
         if d != decision { decision = d }
-        let badge = KeepAwakeState.badgeText(for: d, port: monitor.lastInput?.label)
+        let badge = KeepAwakeState.badgeText(for: d, port: input?.label)
         if badge != badgeText { badgeText = badge }
 
         updateTick(awayFromMac: awayFromMac, now: now)
