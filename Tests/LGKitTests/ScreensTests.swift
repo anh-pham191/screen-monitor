@@ -76,3 +76,14 @@ private let phl2 = ScreenInfo(displayID: 10, isBuiltIn: false, vendor: 0x410C, m
     #expect(KeyRouter.route(.volumeUp, pointerScreen: .software, hardwareIsSoundOutput: true, hardwareConnected: true) == .hardware)
     #expect(KeyRouter.route(.mute, pointerScreen: .hardware, hardwareIsSoundOutput: false, hardwareConnected: true) == .passThrough)
 }
+
+@Test func destinationPrefersBuiltIn() {
+    #expect(WindowPlacement.destination(kinds: [.hardware, .software, .builtIn]) == 2)
+}
+@Test func destinationFallsBackToSoftwareScreen() {
+    #expect(WindowPlacement.destination(kinds: [.hardware, .software, .software]) == 1)
+}
+@Test func destinationNoneWhenOnlyHardware() {
+    #expect(WindowPlacement.destination(kinds: [.hardware]) == nil)
+    #expect(WindowPlacement.destination(kinds: []) == nil)
+}

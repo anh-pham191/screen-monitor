@@ -33,7 +33,10 @@ final class MonitorModel: ObservableObject {
         }
     }
     @Published private(set) var raw: [UInt8: VCPReading] = [:]
-    @Published private(set) var details: DisplayDetails?
+    @Published private(set) var details: DisplayDetails? {
+        // A screen that matches a new EDID stops being a software screen (and loses its overlay).
+        didSet { if ScreenCatalog.update(hardwareEDID: details?.edid) { softwareBrightness.rebuild() } }
+    }
     @Published private(set) var capabilities: Capabilities?
     /// The string the LG sent, kept next to the parse so Details can show what the parser missed.
     @Published private(set) var capabilitiesRaw: String?
@@ -109,13 +112,17 @@ final class MonitorModel: ObservableObject {
     private var seenManufacturers: Set<String> = []
     private let keyTap = MediaKeyTap()
     private let dragMonitor = WindowDragMonitor()
-    private let hud = HUD()
+    /// Shared with `softwareBrightness`, so there is only ever one indicator on screen.
+    private let hud: HUD
+    let softwareBrightness: SoftwareBrightness
     private var trustTimer: Timer?
     private var follower: BrightnessFollower
     private var syncTimer: Timer?
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, softwareBrightness: SoftwareBrightness, hud: HUD) {
         self.defaults = defaults
+        self.softwareBrightness = softwareBrightness
+        self.hud = hud
         inputConfig = InputConfig.decodeOrDefault(defaults.data(forKey: Keys.inputConfig))
         commandIsAutomatic = defaults.data(forKey: Keys.inputConfig) == nil
         let storedPort = defaults.string(forKey: Keys.macPort).flatMap(Input.init(rawValue:)) ?? .hdmi1
@@ -159,6 +166,7 @@ final class MonitorModel: ObservableObject {
         refresh()
 
         keyTap.model = self
+        keyTap.softwareBrightness = softwareBrightness
         if (keysEnabled || splitEnabled) && !accessibilityTrusted { Accessibility.prompt() }
         recheckAccessibility()
         // Resuming after a relaunch keeps the stored offset: the LG isn't read yet, so there is
@@ -298,9 +306,9 @@ final class MonitorModel: ObservableObject {
     func switchTo(_ input: Input) {
         if input != macPort { recordSoundOutput() }
         if WindowPlacement.shouldMoveOff(target: input, macPort: macPort,
-                                         destinationAvailable: WindowMover.builtInAvailable()) {
-            // Leaving the Mac's port blanks the LG, so get every window somewhere visible first.
-            WindowShuffler.moveAllWindowsToBuiltIn()
+                                         destinationAvailable: ScreenCatalog.windowDestination() != nil) {
+            // Leaving the Mac's port blanks the hardware screen, so get every window somewhere visible first.
+            WindowShuffler.moveWindowsOffHardwareScreen()
         }
         let value = inputConfig.value(for: input)
         let command = inputConfig.command
@@ -516,7 +524,7 @@ final class MonitorModel: ObservableObject {
     }
 
     private func showHUD(_ kind: HUD.Kind, level: Double) {
-        guard let screen = MediaKeyTap.lgScreen() else { return }
+        guard let screen = ScreenCatalog.hardwareScreen() else { return }
         hud.show(kind, level: level, on: screen)
     }
 

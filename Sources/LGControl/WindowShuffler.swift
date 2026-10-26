@@ -2,9 +2,9 @@ import AppKit
 import ApplicationServices
 import LGKit
 
-/// Moves every app's windows off the LG before it leaves the Mac input, and puts them back on
-/// return. Leaving the Mac input blanks the LG while macOS still treats it as a screen, so
-/// anything left there would be out of sight until the switch back.
+/// Moves every app's windows off the hardware screen before it leaves the Mac's port, and puts
+/// them back on return. Leaving the Mac's port blanks the screen while macOS still treats it as a
+/// screen, so anything left there would be out of sight until the switch back.
 ///
 /// Runs on the main thread; every Accessibility element gets a 0.1 s timeout so one hung app
 /// costs at most a moment rather than freezing the switch.
@@ -19,27 +19,28 @@ enum WindowShuffler {
 
     private static var moved: [Moved] = []
     private static var pendingRestore: Timer?
-    /// After a switch back the LG may take a moment to reappear as a screen; restoring before it
+    /// After a switch back the hardware screen may take a moment to reappear; restoring before it
     /// does would clamp the windows onto the MacBook.
     private static let restoreWait: TimeInterval = 10
     private static let restorePoll: TimeInterval = 0.5
 
-    static func moveAllWindowsToBuiltIn() {
+    /// To the MacBook screen; with the lid closed, to the first screen with software brightness;
+    /// with neither, the windows stay where they are.
+    static func moveWindowsOffHardwareScreen() {
         pendingRestore?.invalidate()
         pendingRestore = nil
-        guard WindowMover.builtInScreen() != nil else { return }
+        guard let target = ScreenCatalog.windowDestination() else { return }
         // Our own windows go through AppKit: an AX request to our own process is answered on the
         // main thread, which is the one waiting for it, so it would just time out.
-        WindowMover.moveAppWindowsToBuiltInScreen()
+        WindowMover.moveAppWindows(to: target)
         guard Accessibility.isTrusted() else { return }
-        guard let builtIn = WindowMover.builtInScreen() else { return }
-        guard let lg = MediaKeyTap.lgScreen(), let primary = NSScreen.screens.first?.frame.height else { return }
-        let lgFrame = SnapZones.axRect(fromCocoa: lg.frame, primaryScreenHeight: primary)
-        let destination = SnapZones.axRect(fromCocoa: builtIn.visibleFrame, primaryScreenHeight: primary)
+        guard let hardware = ScreenCatalog.hardwareScreen(), let primary = NSScreen.screens.first?.frame.height else { return }
+        let hardwareFrame = SnapZones.axRect(fromCocoa: hardware.frame, primaryScreenHeight: primary)
+        let destination = SnapZones.axRect(fromCocoa: target.visibleFrame, primaryScreenHeight: primary)
         let ownPID = ProcessInfo.processInfo.processIdentifier
 
-        // A second switch away (PS5 then Windows) keeps the first set of frames: those are the ones
-        // that belong on the LG.
+        // A second switch away (one other port, then another) keeps the first set of frames: those
+        // are the ones that belong on the hardware screen.
         let alreadyMoved = moved
         for app in NSWorkspace.shared.runningApplications
         where app.activationPolicy == .regular && app.processIdentifier != ownPID {
@@ -49,10 +50,10 @@ enum WindowShuffler {
             guard let windows: [AXUIElement] = AXWindow.attribute(kAXWindowsAttribute, of: element) else { continue }
             for window in windows {
                 AXUIElementSetMessagingTimeout(window, AXWindow.timeout)
-                // Minimised windows are out of sight anyway; a full-screen one owns its own Space on the LG.
+                // Minimised windows are out of sight anyway; a full-screen one owns its own Space there.
                 if isMinimisedOrFullScreen(window) { continue }
-                guard let frame = AXWindow.frame(of: window), WindowRelocation.isOn(frame, screen: lgFrame) else { continue }
-                AXWindow.setFrame(WindowRelocation.target(for: frame, from: lgFrame, to: destination), of: window)
+                guard let frame = AXWindow.frame(of: window), WindowRelocation.isOn(frame, screen: hardwareFrame) else { continue }
+                AXWindow.setFrame(WindowRelocation.target(for: frame, from: hardwareFrame, to: destination), of: window)
                 if !alreadyMoved.contains(where: { CFEqual($0.window, window) }) {
                     moved.append(Moved(pid: pid, window: window, frame: frame))
                 }
@@ -60,7 +61,7 @@ enum WindowShuffler {
         }
     }
 
-    /// Waits for the LG to come back as a screen, then puts each moved window back. Windows closed
+    /// Waits for the hardware screen to come back, then puts each moved window back. Windows closed
     /// in the meantime no longer answer and are skipped.
     static func restoreWindows() {
         pendingRestore?.invalidate()
@@ -70,19 +71,19 @@ enum WindowShuffler {
             moved = []
             return
         }
-        if MediaKeyTap.lgScreen() != nil {
+        if ScreenCatalog.hardwareScreen() != nil {
             restoreNow()
             return
         }
         let deadline = Date().addingTimeInterval(restoreWait)
         pendingRestore = Timer.scheduledTimer(withTimeInterval: restorePoll, repeats: true) { timer in
             MainActor.assumeIsolated {
-                if MediaKeyTap.lgScreen() != nil {
+                if ScreenCatalog.hardwareScreen() != nil {
                     timer.invalidate()
                     pendingRestore = nil
                     restoreNow()
                 } else if Date() >= deadline {
-                    // The LG never came back: the windows are fine where they are on the MacBook.
+                    // The hardware screen never came back: the windows are fine where they are.
                     timer.invalidate()
                     pendingRestore = nil
                     moved = []

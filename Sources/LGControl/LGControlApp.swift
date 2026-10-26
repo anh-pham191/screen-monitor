@@ -32,10 +32,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct LGControlApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model: MonitorModel
+    @StateObject private var softwareBrightness: SoftwareBrightness
     @StateObject private var keepAwake: KeepAwakeModel
 
     init() {
-        let m = MonitorModel()
+        // One HUD for both, so a hardware and a software key press never show two indicators.
+        let hud = HUD()
+        let s = SoftwareBrightness(defaults: .standard, hud: hud)
+        _softwareBrightness = StateObject(wrappedValue: s)
+        let m = MonitorModel(defaults: .standard, softwareBrightness: s, hud: hud)
         _model = StateObject(wrappedValue: m)
         let k = KeepAwakeModel(monitor: m)
         _keepAwake = StateObject(wrappedValue: k)
@@ -44,7 +49,7 @@ struct LGControlApp: App {
 
     var body: some Scene {
         Window("Screen Monitor", id: "main") {
-            ContentView().environmentObject(model)
+            ContentView().environmentObject(model).environmentObject(softwareBrightness)
         }
         .windowResizability(.contentSize)
 
@@ -53,12 +58,12 @@ struct LGControlApp: App {
         }
 
         Settings {
-            SettingsView().environmentObject(model).environmentObject(keepAwake)
+            SettingsView().environmentObject(model).environmentObject(softwareBrightness).environmentObject(keepAwake)
         }
 
         // The window style is needed for sliders; the default menu style can't host them.
         MenuBarExtra {
-            MenuBarContent().environmentObject(model).environmentObject(keepAwake)
+            MenuBarContent().environmentObject(model).environmentObject(softwareBrightness).environmentObject(keepAwake)
         } label: {
             MenuBarLabel().environmentObject(keepAwake)
         }

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import LGKit
 
-/// The on-screen indicator for key presses, drawn on the LG. macOS's own OSD is private API,
+/// The on-screen indicator for key presses, drawn on the screen the key acted on. macOS's own OSD is private API,
 /// so this imitates it: a symbol over a 16-segment bar.
 @MainActor
 final class HUD {
@@ -60,7 +60,8 @@ final class HUD {
     private func makePanel() -> NSPanel {
         let panel = NSPanel(contentRect: NSRect(origin: .zero, size: Self.size),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
-        panel.level = .statusBar
+        // Above the software brightness overlays (`.screenSaver`), so a dimmed screen still shows it.
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.hidesOnDeactivate = false
         panel.ignoresMouseEvents = true

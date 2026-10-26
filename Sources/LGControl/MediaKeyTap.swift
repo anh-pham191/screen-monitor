@@ -2,16 +2,21 @@ import AppKit
 import CoreGraphics
 import LGKit
 
-/// Intercepts the brightness and volume keys and hands the LG's share of them to `MonitorModel`.
+/// Intercepts the brightness and volume keys and hands the hardware screen's share of them to
+/// `MonitorModel`, and brightness over any other external screen to `SoftwareBrightness`.
 ///
 /// Runs on the main run loop, so the callback is on the main thread and can read the model
 /// synchronously: it must answer "swallow or pass on" before it returns.
 @MainActor
 final class MediaKeyTap {
     weak var model: MonitorModel?
+    weak var softwareBrightness: SoftwareBrightness?
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
     private var gate = MediaKeyGate()
+    /// The software screen each brightness press started over, so a held key keeps stepping that
+    /// screen even if the pointer wanders onto another one.
+    private var softwareTargets: [MediaKey: NSScreen] = [:]
 
     var isRunning: Bool { tap != nil }
 
@@ -46,6 +51,7 @@ final class MediaKeyTap {
         self.tap = nil
         source = nil
         gate = MediaKeyGate()
+        softwareTargets = [:]
     }
 
     /// Returns true when the event should be swallowed.
@@ -61,13 +67,17 @@ final class MediaKeyTap {
         let modifiers = KeyRouter.modifiersAllowHandling(
             option: flags.contains(.maskAlternate), shift: flags.contains(.maskShift),
             control: flags.contains(.maskControl), command: flags.contains(.maskCommand))
+        let software = softwareBrightness
         let action = gate.decide(key, modifiers: modifiers,
-                                 canHandle: { $0 == .software || model.canHandleMediaKey(key.key) }) {
-            KeyRouter.route(key.key,
-                            pointerScreen: Self.pointerOnLG() ? .hardware : nil,
-                            // Only the volume keys need CoreAudio; skip the lookup for brightness.
-                            hardwareIsSoundOutput: key.key.isAudio && AudioOutput.lgIsSoundOutput(lgName: model.lgName),
-                            hardwareConnected: model.connected)
+                                 canHandle: { $0 == .software ? software != nil : model.canHandleMediaKey(key.key) }) {
+            let pointer = ScreenCatalog.screenUnderPointer()
+            let kind = pointer.flatMap(ScreenCatalog.kind)
+            softwareTargets[key.key] = kind == .software ? pointer : nil
+            return KeyRouter.route(key.key,
+                                   pointerScreen: kind,
+                                   // Only the volume keys need CoreAudio; skip the lookup for brightness.
+                                   hardwareIsSoundOutput: key.key.isAudio && AudioOutput.lgIsSoundOutput(lgName: model.lgName),
+                                   hardwareConnected: model.connected)
         }
         switch action {
         case .passThrough: return false
@@ -75,8 +85,14 @@ final class MediaKeyTap {
         case .handle(.hardware, let fine):
             model.handleMediaKey(key, fine: fine)
             return true
-        case .handle(_, _):
-            // Software route: nothing to step until the screen catalog exists, so pass it on.
+        case .handle(.software, let fine):
+            // The gate owns this press now, so swallow it even if the screen has just gone away.
+            if let screen = softwareTargets[key.key] {
+                software?.handleMediaKey(key, fine: fine, on: screen)
+            }
+            return true
+        case .handle(.passThrough, _):
+            // The gate never hands out this route; give the key back to macOS if it ever does.
             return false
         }
     }
@@ -92,19 +108,6 @@ final class MediaKeyTap {
             guard type.rawValue == 14, let ns = NSEvent(cgEvent: event) else { return nil }
             return MediaKeyEvent.decode(subtype: ns.subtype.rawValue, data1: ns.data1)
         }
-    }
-
-    static func lgScreen() -> NSScreen? {
-        NSScreen.screens.first { screen in
-            guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
-            else { return false }
-            return CGDisplayIsBuiltin(CGDirectDisplayID(id.uint32Value)) == 0
-        }
-    }
-
-    private static func pointerOnLG() -> Bool {
-        guard let screen = lgScreen() else { return false }
-        return NSMouseInRect(NSEvent.mouseLocation, screen.frame, false)
     }
 }
 

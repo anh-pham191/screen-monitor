@@ -2,7 +2,7 @@ import AppKit
 import ApplicationServices
 import LGKit
 
-/// Watches other apps' window drags and snaps a window dropped on the LG into the half under
+/// Watches other apps' window drags and snaps a window dropped on the hardware screen into the half under
 /// the pointer.
 ///
 /// macOS has no "window drag" event for other apps, so this infers one: on mouse down it finds
@@ -65,8 +65,8 @@ final class WindowDragMonitor {
 
     private func mouseDown() {
         reset()
-        // Nothing to snap to without the LG; skip the cross-process hit test on every click.
-        guard MediaKeyTap.lgScreen() != nil, let primary = Self.primaryScreenHeight else { return }
+        // Nothing to snap to without the hardware screen; skip the cross-process hit test on every click.
+        guard ScreenCatalog.hardwareScreen() != nil, let primary = Self.primaryScreenHeight else { return }
         let point = SnapZones.axPoint(fromCocoa: NSEvent.mouseLocation, primaryScreenHeight: primary)
         var hit: AXUIElement?
         let error = AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &hit)
@@ -88,7 +88,7 @@ final class WindowDragMonitor {
         }
         // The pointer is local, so the highlight follows it on every event even between reads.
         let pointer = NSEvent.mouseLocation
-        guard let lg = MediaKeyTap.lgScreen(),
+        guard let lg = ScreenCatalog.hardwareScreen(),
               SnapZones.isWindowDrag(startPosition: t.startPosition, startSize: t.startSize,
                                      position: t.position, size: t.size,
                                      pointerOnLG: NSMouseInRect(pointer, lg.frame, false)) else {
@@ -102,7 +102,7 @@ final class WindowDragMonitor {
 
     private func mouseUp() {
         defer { reset() }
-        guard let t = tracked, let index = highlighted, let lg = MediaKeyTap.lgScreen(),
+        guard let t = tracked, let index = highlighted, let lg = ScreenCatalog.hardwareScreen(),
               let primary = Self.primaryScreenHeight else { return }
         let zones = SnapZones.halves(of: lg.visibleFrame)
         guard zones.indices.contains(index) else { return }
