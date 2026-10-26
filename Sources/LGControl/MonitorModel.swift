@@ -570,7 +570,7 @@ final class MonitorModel: ObservableObject {
 
     private static func describe(_ error: Error) -> String {
         switch error {
-        case DDCError.noReply: return "The LG didn’t answer the capabilities request."
+        case DDCError.noReply: return "The screen didn’t answer the capabilities request."
         case DDCError.writeFailed: return "Couldn’t send the capabilities request."
         default: return error.localizedDescription
         }

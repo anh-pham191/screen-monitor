@@ -16,7 +16,7 @@ guard let command = args.first else { fail(usage, status: 2) }
 switch (command, args.count) {
 case ("read", 2...3):
     guard let code = hex(args[1]), args.count == 2 || args[2] == "--raw" else { fail(usage, status: 2) }
-    guard let transport = findExternalTransport() else { fail("LG not connected", status: 1) }
+    guard let transport = findExternalTransport() else { fail("No screen with hardware control found", status: 1) }
     let ddc = DDCController(transport: transport)
     do {
         let reading = try ddc.read(code)
@@ -35,7 +35,7 @@ case ("set", 3), ("set", 5):
         guard args[3] == "--addr", let parsed = hex(args[4]) else { fail(usage, status: 2) }
         address = UInt32(parsed)
     }
-    guard let transport = findExternalTransport() else { fail("LG not connected", status: 1) }
+    guard let transport = findExternalTransport() else { fail("No screen with hardware control found", status: 1) }
     do {
         try DDCController(transport: transport).write(code, value: value, dataAddress: address)
         print("ok")
@@ -43,7 +43,7 @@ case ("set", 3), ("set", 5):
         fail("\(error)", status: 1)
     }
 case ("caps", 1):
-    guard let transport = findExternalTransport() else { fail("LG not connected", status: 1) }
+    guard let transport = findExternalTransport() else { fail("No screen with hardware control found", status: 1) }
     do {
         let text = try DDCController(transport: transport).capabilities()
         print(text)
@@ -56,7 +56,7 @@ case ("caps", 1):
         fail("\(error)", status: 1)
     }
 case ("info", 1):
-    guard let details = DisplayDetailsReader.read() else { fail("LG not connected", status: 1) }
+    guard let details = DisplayDetailsReader.read() else { fail("No screen with hardware control found", status: 1) }
     if let edid = details.edid {
         print("name: \(edid.name ?? "unknown")")
         print("manufacturer: \(edid.manufacturerID)")

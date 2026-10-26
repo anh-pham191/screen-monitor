@@ -26,6 +26,9 @@ private struct InputsSection: View {
 
     var body: some View {
         Section {
+            Picker("This Mac is on", selection: $model.macPort) {
+                ForEach(Input.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
             Picker("Switch command", selection: Binding(
                 get: { model.inputConfig.command },
                 set: { model.inputConfig.setCommand($0) })) {
@@ -35,7 +38,7 @@ private struct InputsSection: View {
         } header: {
             Text("Inputs")
         } footer: {
-            Text("LG monitors switch inputs reliably only with LG’s own command. Standard (VCP 0x60) makes this LG bounce back to the Mac. USB-C 0xD1 is not tested yet.")
+            Text("LG monitors switch inputs reliably only with LG’s own command. Other monitors use the standard command.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -101,7 +104,7 @@ private struct KeyboardSection: View {
             }
             Toggle(isOn: $model.keysEnabled) {
                 Text("Control brightness and volume keys")
-                Text("Brightness keys change the LG while the pointer is on it. Volume and mute change the LG while it’s the sound output. Hold ⌥⇧ for smaller steps.")
+                Text("Brightness keys change the screen under the pointer: the hardware screen directly, other screens by dimming. Volume and mute change the hardware screen while it’s the sound output. Hold ⌥⇧ for smaller steps.")
             }
             .toggleStyle(.switch)
             if model.keysEnabled && model.accessibilityTrusted && !model.keyTapActive {
@@ -124,8 +127,8 @@ private struct WindowsSection: View {
     var body: some View {
         Section {
             Toggle(isOn: $model.splitEnabled) {
-                Text("Screen split (drag a window onto the LG)")
-                Text("While you drag a window on the LG, two halves appear. Drop it on one to fill that half.")
+                Text("Screen split (drag a window onto the hardware screen)")
+                Text("While you drag a window on that screen, two halves appear. Drop it on one to fill that half.")
             }
             .toggleStyle(.switch)
         } header: {
@@ -143,7 +146,7 @@ private struct BrightnessSyncSection: View {
         Section {
             Toggle(isOn: $model.syncEnabled) {
                 Text("Follow MacBook brightness")
-                Text("The LG keeps the difference it has when you turn this on. Changing the LG yourself sets a new difference.")
+                Text("The screen keeps the difference it has when you turn this on. Changing it yourself sets a new difference.")
             }
             .toggleStyle(.switch)
             LabeledContent("Offset") {
@@ -171,8 +174,8 @@ private struct KeepAwakeSection: View {
     var body: some View {
         Section {
             Toggle(isOn: $keepAwake.awayRuleOn) {
-                Text("Keep awake while the LG shows the PS5")
-                Text("Your Mac won’t sleep while you play; ends when you switch back.")
+                Text("Keep awake while the screen shows another input")
+                Text("Your Mac won’t sleep meanwhile; ends when you switch back.")
             }
             .toggleStyle(.switch)
             VStack(alignment: .leading, spacing: 6) {

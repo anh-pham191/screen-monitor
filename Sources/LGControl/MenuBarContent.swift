@@ -4,19 +4,25 @@ import LGKit
 
 struct MenuBarContent: View {
     @EnvironmentObject private var model: MonitorModel
+    @EnvironmentObject private var software: SoftwareBrightness
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text(model.details?.edid?.name ?? "LG").font(.headline)
+                if let name = model.details?.edid?.name {
+                    Text(name).font(.headline).lineLimit(1)
+                } else {
+                    Text("No screen with hardware control").foregroundStyle(.secondary).lineLimit(1)
+                }
                 Spacer()
-                Text(model.details?.connection ?? "").font(.caption).foregroundStyle(.secondary)
+                Text(model.details?.connection ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
-            // Always shown, like the main window: they're the way back when the LG isn't answering.
+            // Always shown, like the main window: they're the way back when the screen isn't answering.
             VStack(spacing: 2) {
                 ForEach(Input.allCases, id: \.self) { input in
-                    MenuRow(title: input.label, checked: model.lastInput == input,
+                    MenuRow(title: input.label, detail: input == model.macPort ? "This Mac" : nil,
+                            checked: model.lastInput == input,
                             highlighted: model.lastInput == input) { model.switchTo(input) }
                 }
             }
@@ -28,10 +34,14 @@ struct MenuBarContent: View {
                             valueText: model.muted ? "Muted" : nil, set: model.setVolume)
             } else {
                 HStack {
-                    Text("LG not connected").foregroundStyle(.secondary)
+                    Text("Not answering").foregroundStyle(.secondary)
                     Spacer()
                     RetryButton()
                 }
+            }
+            ForEach(software.screens) { screen in
+                Divider()
+                SoftwareScreenRow(screen: screen)
             }
             Divider()
             KeepAwakeSection()
@@ -52,6 +62,7 @@ struct MenuBarContent: View {
 
 private struct MenuRow: View {
     let title: String
+    var detail: String?
     var checked: Bool?
     var highlighted = false
     let action: () -> Void
@@ -63,8 +74,13 @@ private struct MenuRow: View {
                 if let checked {
                     Image(systemName: "checkmark").opacity(checked ? 1 : 0).font(.caption)
                 }
-                Text(title)
+                Text(title).lineLimit(1)
                 Spacer()
+                if let detail {
+                    Text(detail).font(.caption)
+                        .foregroundStyle(highlighted ? AnyShapeStyle(Color.white.opacity(0.8)) : AnyShapeStyle(.secondary))
+                        .lineLimit(1)
+                }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
@@ -83,8 +99,26 @@ private struct MenuRow: View {
     }
 }
 
+/// A screen without hardware control: its name as the section label, then a brightness slider
+/// that dims it in software.
+private struct SoftwareScreenRow: View {
+    @EnvironmentObject private var software: SoftwareBrightness
+    let screen: SoftwareScreen
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(screen.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                .lineLimit(1).truncationMode(.middle)
+            ValueSlider(title: "Brightness", value: Double(screen.level), maximum: 100) {
+                software.setLevel(Int($0.rounded()), for: screen.id)
+            }
+        }
+    }
+}
+
 private struct KeepAwakeSection: View {
     @EnvironmentObject private var keepAwake: KeepAwakeModel
+    @EnvironmentObject private var monitor: MonitorModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -122,7 +156,8 @@ private struct KeepAwakeSection: View {
                      stop: keepAwake.stop)
         case .otherInput where keepAwake.decision.hold:
             // No stop button: the away rule is a setting, and the card can't switch it off.
-            RingCard(progress: 1, title: "PS5", subtitle: "while the PS5 is on", stop: nil)
+            RingCard(progress: 1, title: monitor.lastInput?.label ?? "Other input",
+                     subtitle: "while the screen shows it", stop: nil)
         default:
             EmptyView()
         }

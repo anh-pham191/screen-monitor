@@ -73,7 +73,7 @@ struct LGControlApp: App {
     }
 }
 
-/// While Keep Awake holds, the time left (or "PS5") sits beside the icon.
+/// While Keep Awake holds, the time left (or the port) sits beside the icon.
 private struct MenuBarLabel: View {
     @EnvironmentObject private var keepAwake: KeepAwakeModel
     var body: some View {

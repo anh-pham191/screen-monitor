@@ -1,9 +1,10 @@
 # Screen Monitor
 
-A small personal macOS app (macOS 14+) that controls an LG ULTRAFINE over DDC/CI:
-brightness, contrast, volume, mute and input switching (Mac, PS5 and Windows), from a
-window or the menu bar. It talks to the monitor through Apple's private `IOAVService` API,
-so it works on Apple silicon over HDMI.
+A small personal macOS app (macOS 14+) that controls a monitor over DDC/CI: brightness,
+contrast, volume, mute and input switching (HDMI 1, HDMI 2 and USB-C), from a window or the
+menu bar. It talks to the monitor through Apple's private `IOAVService` API, so it works on
+Apple silicon over HDMI. Screens without DDC (DisplayLink and the like) get software
+brightness instead, see below.
 
 ## Build and install
 
@@ -39,18 +40,19 @@ General › Show in Dock brings the Dock icon back.
 
 ## Brightness and volume keys
 
-The app can take over the normal Mac keys for the LG:
+The app can take over the normal Mac keys:
 
-- **Brightness keys (F1/F2):** change the LG while the pointer is on the LG. With the pointer on
-  the MacBook they change the MacBook as usual.
-- **Volume and mute keys (F10–F12):** change the LG while it's the sound output (the output named
-  after the LG, `LG ULTRAFINE`). Otherwise they change the Mac's output as usual. A volume key
+- **Brightness keys (F1/F2):** change the screen under the pointer: the hardware screen directly,
+  other external screens by dimming them (see below). With the pointer on the MacBook they change
+  the MacBook as usual.
+- **Volume and mute keys (F10–F12):** change the hardware screen while it's the sound output (the
+  output named after the screen). Otherwise they change the Mac's output as usual. A volume key
   while muted unmutes first.
 - **⌥⇧ with any of these keys:** quarter steps, as on a normal Mac.
 - **Any other modifier** (⌥ alone, ⌘, ⌃, ⇧ alone): the key goes to macOS untouched, so shortcuts
   such as ⌥ + brightness (Displays settings) and ⌥ + volume (Sound settings) keep working.
 
-An indicator like the macOS one appears on the LG for each press. Turn the feature off in
+An indicator like the macOS one appears on the screen for each press. Turn the feature off in
 Settings › Keyboard › Control brightness and volume keys.
 
 ### Accessibility permission
@@ -65,30 +67,47 @@ the same presses.
 
 ## Screen split
 
-Drag any window onto the LG and two halves appear on it. Drop the window with the pointer over
+Drag any window onto the hardware screen and two halves appear on it. Drop the window with the pointer over
 one and it fills that half. On the MacBook screen nothing changes. Turn it off in Settings ›
-Windows › Screen split (drag a window onto the LG).
+Windows › Screen split (drag a window onto the hardware screen).
 
 It needs the same Accessibility permission as the keys. It only counts a real drag: the window
 has to move more than 4 pt without changing size, so resizing from the left or top edge never
 shows the halves. Screen Monitor's own windows are left alone.
 
 **macOS tiling:** macOS 15 and later tile windows too, when you drag one to a screen edge or hold
-⌥ while dragging. Both can show at once near the LG's edges. If they get in each other's way,
+⌥ while dragging. Both can show at once near the screen's edges. If they get in each other's way,
 turn off System Settings › Desktop & Dock › Windows › **Drag windows to screen edges to tile**
 (and **Hold ⌥ key while dragging windows to tile**), or turn off the screen split here.
 
+## Screens without hardware control (DisplayLink etc.)
+
+Some external screens, such as those on a DisplayLink dock, have no DDC route, so their real
+brightness can't be changed from the Mac. Screen Monitor dims them in software instead: a
+click-through black overlay whose opacity sets the level. Each one gets its own slider in the
+menu bar panel, headed by its name. This works whether or not a hardware screen is connected.
+
+- **Darken only.** The overlay can't make a screen brighter than it is. Set the screen to 100%
+  with its own buttons first, then dim from here.
+- **Brightness keys follow the pointer.** With the pointer on such a screen they step its level,
+  with the same ⌥⇧ fine steps.
+- **Level 0 is not black.** It leaves about 10% light so a screen can't be dimmed out of reach.
+- **Remembered per screen.** Each screen keeps its level across launches; two identical screens
+  keep separate levels.
+- **Screenshots.** The overlays aren't meant to show up in screenshots or screen sharing; that
+  is best effort, and some capture tools may still include them.
+
 ## Follow MacBook brightness
 
-Settings › Brightness › **Follow MacBook brightness** makes the LG track the MacBook's built-in
-display, including auto-brightness. Twice a second the app reads the MacBook level and, when it
-has moved by at least 1%, sets the LG to that level plus an offset.
+Settings › Brightness › **Follow MacBook brightness** makes the hardware screen track the
+MacBook's built-in display, including auto-brightness. Twice a second the app reads the MacBook
+level and, when it has moved by at least 1%, sets the screen to that level plus an offset.
 
-- **Turning it on** keeps the LG where it is: the current difference becomes the offset.
-- **Changing the LG yourself** (slider, menu bar or brightness keys) sets a new offset, so the
-  LG keeps the new difference from then on.
-- **Offset** shows the difference in the LG's brightness units. **Reset** sets it to 0 and moves
-  the LG to the MacBook level straight away.
+- **Turning it on** keeps the screen where it is: the current difference becomes the offset.
+- **Changing the screen yourself** (slider, menu bar or brightness keys) sets a new offset, so the
+  screen keeps the new difference from then on.
+- **Offset** shows the difference in the screen's brightness units. **Reset** sets it to 0 and
+  moves the screen to the MacBook level straight away.
 
 The main window shows `Following MacBook` under Brightness while it's on. The MacBook level comes
 from the private DisplayServices framework (read only; nothing is written to the MacBook).
@@ -102,10 +121,11 @@ with a small ✕ to stop. Picking another
 preset starts again from now. While it runs, the menu bar icon shows the time left, such as
 `1h 15m`.
 
-- **PS5 rule:** Settings › Keep Awake › **Keep awake while the LG shows the PS5** (on by default)
-  keeps the Mac awake while the LG is on the PS5 input, and the badge reads `PS5`. It ends when
-  you switch back to the Mac from Screen Monitor. The LG answers on every input, so a switch made
-  with the monitor's own buttons can't be seen; the rule therefore gives up after 8 hours.
+- **Away rule:** Settings › Keep Awake › **Keep awake while the screen shows another input** (on
+  by default) keeps the Mac awake while the screen is on a port other than the Mac's, and the
+  badge reads that port, such as `HDMI 2`. It ends when you switch back to the Mac from Screen
+  Monitor. The screen answers on every input, so a switch made with the monitor's own buttons
+  can't be seen; the rule therefore gives up after 8 hours.
 - **Battery rule:** **Stop when battery is below** (5–50%, default 20%) ends Keep Awake when the
   MacBook is on battery and drops below that level, and the panel shows
   `Stopped: battery below 20%`. Plugged in, Keep Awake runs until its timer ends.
@@ -131,7 +151,7 @@ Run tests only through this script: with Command Line Tools, plain `swift test` 
 
 ## lgctl
 
-A command-line tool for poking the monitor directly:
+A command-line tool for poking the hardware screen directly:
 
 ```sh
 swift run lgctl read 10          # read VCP 0x10 (brightness)
@@ -145,25 +165,34 @@ swift run lgctl info             # EDID name, serial, connection, resolution, re
 Codes and values are hex. `--addr` sets the I2C data address for `set` (default `51`, the
 standard DDC/CI address); LG's own input command needs `50`.
 
-## Input values
+## Ports and input values
 
-The standard input switch (VCP `0x60` at data address `0x51`) makes this LG go black and bounce
-straight back to HDMI 1. LG's own command holds the new input: VCP `0xF4` written to data address
-`0x50`. Settings › Inputs › Switch command picks between them (LG is the default); changing it
-resets the three values to that command's defaults.
+The three buttons are ports: HDMI 1, HDMI 2 and USB-C. Settings › Inputs › **This Mac is on**
+names the port the Mac is plugged into (default HDMI 1). Leaving it moves windows off the
+hardware screen, and switching back restores the sound output; Keep Awake treats any other port
+as "away". The menu bar marks the Mac's port with a small `This Mac`.
 
-| Input | LG command (VCP 0xF4 at 0x50) | Standard (VCP 0x60 at 0x51) |
+Settings › Inputs › Switch command picks how a switch is sent. It defaults to LG's own command
+for LG monitors and to the standard one for everything else, but only until you save a choice;
+changing it resets the three values to that command's defaults.
+
+- **LG monitors (VCP 0xF4 at 0x50):** LG's own command holds the new input, where the standard
+  one makes some LG screens go black and bounce straight back to HDMI 1. Data address `0x50`.
+- **Standard (VCP 0x60 at 0x51):** what other monitors use.
+
+| Port | LG command | Standard |
 |---|---|---|
-| Mac (HDMI 1) | `0x90` (verified) | `0x11` |
-| PS5 (HDMI 2) | `0x91` (verified) | `0x12` |
-| Windows (USB-C) | `0xD1` (default) | `0x0F` (default) |
+| HDMI 1 | `0x90` (verified) | `0x11` |
+| HDMI 2 | `0x91` (verified) | `0x12` |
+| USB-C | `0xD1` (default) | `0x0F` (default) |
 
 The USB-C values aren't verified. Under LG's command USB-C is conventionally `0xD1`
-(DisplayPort `0xD0`). Under standard, the LG advertises `11 12 0F 00` for input source, so `0x0F`
-is the best guess. If the Windows button doesn't switch, change the value in Settings. Details ›
+(DisplayPort `0xD0`). Under standard, an LG advertises `11 12 0F 00` for input source, so `0x0F`
+is the best guess. If the USB-C button doesn't switch, change the value in Settings. Details ›
 Inputs advertised by monitor lists the standard `0x60` values.
 
-Settings saved before the switch command existed load as Standard with their stored values.
+Settings saved before ports existed load with their stored values: the old Mac, PS5 and Windows
+values become HDMI 1, HDMI 2 and USB-C.
 
 ## Launch at login
 

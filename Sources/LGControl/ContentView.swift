@@ -8,13 +8,13 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HeaderCard()
-            // Always shown: they work even while a refresh says the LG isn't answering, and
+            // Always shown: they work even while a refresh says the screen isn't answering, and
             // these are how Anh gets it back. `switchTo` finds the transport again itself.
             VStack(alignment: .leading, spacing: 6) {
                 Text("Input").font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
                 InputSegments()
                 if !model.connected {
-                    Text("Input buttons always work, so you can switch the LG back to this Mac.")
+                    Text("Input buttons always work, so you can switch the screen back to this Mac.")
                         .font(.caption2).foregroundStyle(.secondary)
                 }
             }
@@ -43,7 +43,7 @@ struct ContentView: View {
     }
 }
 
-/// LG name, how it's connected, and whether it's answering DDC.
+/// Screen name, how it's connected, and whether it's answering DDC.
 struct HeaderCard: View {
     @EnvironmentObject private var model: MonitorModel
 
@@ -52,7 +52,11 @@ struct HeaderCard: View {
             HStack(spacing: 14) {
                 Image(systemName: "display").font(.system(size: 28, weight: .light))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(model.details?.edid?.name ?? "LG").font(.headline)
+                    if let name = model.details?.edid?.name {
+                        Text(name).font(.headline)
+                    } else {
+                        Text("No screen with hardware control").font(.headline).foregroundStyle(.secondary)
+                    }
                     Text(subtitle).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -172,8 +176,9 @@ private struct NotConnectedBox: View {
             VStack(spacing: 12) {
                 Image(systemName: "display.trianglebadge.exclamationmark")
                     .font(.system(size: 36, weight: .light)).foregroundStyle(.secondary)
-                Text("LG not connected").font(.headline)
-                Text("Brightness, contrast and volume come back as soon as the LG answers — Screen Monitor keeps checking.")
+                Text(model.details?.edid?.name == nil ? "No screen with hardware control" : "Not answering")
+                    .font(.headline)
+                Text("Brightness, contrast and volume come back as soon as the screen answers — Screen Monitor keeps checking.")
                     .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     .frame(maxWidth: 320)
                 RetryButton()
