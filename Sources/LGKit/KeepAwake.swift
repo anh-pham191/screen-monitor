@@ -11,28 +11,28 @@ public enum KeepAwakePreset: Int, CaseIterable, Sendable {
 public struct KeepAwakeInputs: Equatable, Sendable {
     public var timerEnd: Date?
     public var now: Date
-    public var ps5Showing: Bool
-    public var ps5RuleOn: Bool
+    public var awayFromMac: Bool
+    public var awayRuleOn: Bool
     public var onBattery: Bool
     public var batteryPercent: Int?
     public var batteryThreshold: Int
-    public var ps5Since: Date?
+    public var awaySince: Date?
 
-    public init(timerEnd: Date?, now: Date, ps5Showing: Bool, ps5RuleOn: Bool, onBattery: Bool,
-                batteryPercent: Int?, batteryThreshold: Int, ps5Since: Date?) {
+    public init(timerEnd: Date?, now: Date, awayFromMac: Bool, awayRuleOn: Bool, onBattery: Bool,
+                batteryPercent: Int?, batteryThreshold: Int, awaySince: Date?) {
         self.timerEnd = timerEnd
         self.now = now
-        self.ps5Showing = ps5Showing
-        self.ps5RuleOn = ps5RuleOn
+        self.awayFromMac = awayFromMac
+        self.awayRuleOn = awayRuleOn
         self.onBattery = onBattery
         self.batteryPercent = batteryPercent
         self.batteryThreshold = batteryThreshold
-        self.ps5Since = ps5Since
+        self.awaySince = awaySince
     }
 }
 
 public enum KeepAwakeReason: Equatable, Sendable {
-    case timer(remaining: TimeInterval), ps5
+    case timer(remaining: TimeInterval), otherInput
 }
 
 public enum KeepAwakeStop: Equatable, Sendable {
@@ -57,16 +57,16 @@ public struct KeepAwakeDecision: Equatable, Sendable {
 
 public enum KeepAwakePolicy {
     /// The LG answers DDC on every input, so a switch back made with the monitor's own
-    /// buttons is invisible to the app. The cap stops the PS5 rule keeping the Mac up forever.
-    public static let ps5Cap: TimeInterval = 8 * 3600
+    /// buttons is invisible to the app. The cap stops the away rule keeping the Mac up forever.
+    public static let awayCap: TimeInterval = 8 * 3600
 
     public static func evaluate(_ i: KeepAwakeInputs) -> KeepAwakeDecision {
-        let ps5WouldHold = ps5Holds(i)
+        let awayWouldHold = awayHolds(i)
 
         // Strict "below": sitting exactly at the threshold keeps running.
         if i.onBattery, let percent = i.batteryPercent, percent < i.batteryThreshold {
             // An expired timer still counts as running: the stop is what ended it.
-            let hadSomething = i.timerEnd != nil || ps5WouldHold
+            let hadSomething = i.timerEnd != nil || awayWouldHold
             return KeepAwakeDecision(hold: false, reason: nil, clearTimer: i.timerEnd != nil,
                                      stopped: hadSomething ? .lowBattery(threshold: i.batteryThreshold) : nil)
         }
@@ -82,17 +82,17 @@ public enum KeepAwakePolicy {
             stopped = .timerFinished
         }
 
-        if ps5WouldHold {
-            // The PS5 carries on seamlessly, so there's nothing to report as stopped.
-            return KeepAwakeDecision(hold: true, reason: .ps5, clearTimer: clearTimer, stopped: nil)
+        if awayWouldHold {
+            // The other input carries on seamlessly, so there's nothing to report as stopped.
+            return KeepAwakeDecision(hold: true, reason: .otherInput, clearTimer: clearTimer, stopped: nil)
         }
         return KeepAwakeDecision(hold: false, reason: nil, clearTimer: clearTimer, stopped: stopped)
     }
 
     /// Without a start time the cap can't be enforced, so the rule fails safe and doesn't hold.
-    private static func ps5Holds(_ i: KeepAwakeInputs) -> Bool {
-        guard i.ps5RuleOn, i.ps5Showing, let since = i.ps5Since else { return false }
-        return i.now.timeIntervalSince(since) < ps5Cap
+    private static func awayHolds(_ i: KeepAwakeInputs) -> Bool {
+        guard i.awayRuleOn, i.awayFromMac, let since = i.awaySince else { return false }
+        return i.now.timeIntervalSince(since) < awayCap
     }
 
     public static func shortText(_ remaining: TimeInterval) -> String {

@@ -170,7 +170,7 @@ private struct KeepAwakeSection: View {
 
     var body: some View {
         Section {
-            Toggle(isOn: $keepAwake.ps5RuleOn) {
+            Toggle(isOn: $keepAwake.awayRuleOn) {
                 Text("Keep awake while the LG shows the PS5")
                 Text("Your Mac won’t sleep while you play; ends when you switch back.")
             }

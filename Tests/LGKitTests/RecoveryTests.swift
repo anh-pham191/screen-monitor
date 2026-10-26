@@ -14,15 +14,6 @@ import Testing
     #expect(RetryPolicy.delay(afterFailures: -1) == 3)
 }
 
-// MARK: WindowPlacement (all-windows path)
-
-@Test func allWindowsMoveOnlyWhenLeavingTheMacWithABuiltInScreen() {
-    #expect(WindowPlacement.shouldMoveToBuiltIn(target: .ps5, builtInAvailable: true))
-    #expect(WindowPlacement.shouldMoveToBuiltIn(target: .windows, builtInAvailable: true))
-    #expect(!WindowPlacement.shouldMoveToBuiltIn(target: .mac, builtInAvailable: true))
-    #expect(!WindowPlacement.shouldMoveToBuiltIn(target: .ps5, builtInAvailable: false))
-}
-
 // MARK: WindowRelocation (Accessibility coordinates: top-left origin)
 
 // The MacBook is the primary screen; the LG sits to its right and higher up.

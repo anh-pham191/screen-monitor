@@ -79,11 +79,11 @@ private let lgDetails = DisplayDetails(edid: nil, connection: "HDMI", pixelWidth
 }
 
 @Test func storedInputConfigFallsBackToDefaults() throws {
-    var custom = InputConfig(); custom.set(0x1B, for: .windows)
+    var custom = InputConfig(); custom.set(0x1B, for: .usbC)
     #expect(InputConfig.decodeOrDefault(try JSONEncoder().encode(custom)) == custom)
     #expect(InputConfig.decodeOrDefault(nil) == InputConfig())
     // An older blob (no command) holds standard values; any missing key takes the standard default.
-    var legacy = InputConfig.defaults(for: .standard); legacy.set(17, for: .mac)
+    var legacy = InputConfig.defaults(for: .standard); legacy.set(17, for: .hdmi1)
     #expect(InputConfig.decodeOrDefault(Data(#"{"mac":17}"#.utf8)) == legacy)
     #expect(InputConfig.decodeOrDefault(Data("garbage".utf8)) == InputConfig())
 }
