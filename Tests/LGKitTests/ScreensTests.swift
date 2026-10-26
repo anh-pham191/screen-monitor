@@ -110,3 +110,42 @@ private let phl2 = ScreenInfo(displayID: 10, isBuiltIn: false, vendor: 0x410C, m
     let second = s.forget("x")
     #expect(!second)
 }
+
+// MARK: Warmth
+
+@Test func warmthZeroIsNeutral() {
+    let m = ColorTemperature.multipliers(warmth: 0)
+    #expect(m.red == 1 && m.green == 1 && m.blue == 1)
+    #expect(ColorTemperature.kelvin(warmth: 0) == 6500 && ColorTemperature.kelvin(warmth: 100) == 2700)
+}
+@Test func fullWarmthMatchesNightShiftWarmEnd() {
+    let m = ColorTemperature.multipliers(warmth: 100)
+    #expect(m.red == 1)
+    #expect(m.green > 0.6 && m.green < 0.72)
+    #expect(m.blue > 0.3 && m.blue < 0.42)
+}
+@Test func warmerMeansLessBlue() {
+    let b = stride(from: 0, through: 100, by: 10).map { ColorTemperature.multipliers(warmth: $0).blue }
+    #expect(zip(b, b.dropFirst()).allSatisfy { $0 >= $1 })
+}
+@Test func warmthClampsOutOfRange() {
+    let high = ColorTemperature.multipliers(warmth: 150), full = ColorTemperature.multipliers(warmth: 100)
+    #expect(high.red == full.red && high.green == full.green && high.blue == full.blue)
+    let low = ColorTemperature.multipliers(warmth: -5), none = ColorTemperature.multipliers(warmth: 0)
+    #expect(low.red == none.red && low.green == none.green && low.blue == none.blue)
+}
+@Test func scaledTable() {
+    #expect(ColorTemperature.scaled([0, 0.5, 1], by: 0.4) == [0, 0.2, 0.4])
+}
+@Test func warmthDefaultsAndOldJSONDecodes() throws {
+    var s = SoftwareLevels(); s.set(40, for: "a")
+    #expect(s.warmth(for: "a") == 0)
+    s.setWarmth(150, for: "a"); #expect(s.warmth(for: "a") == 100)
+    #expect(try JSONDecoder().decode(SoftwareLevels.self, from: JSONEncoder().encode(s)) == s)
+}
+@Test func jsonSavedBeforeWarmthDecodesWithZeroWarmth() throws {
+    let old = Data(#"{"levels":{"a":40,"b":75}}"#.utf8)
+    let s = try JSONDecoder().decode(SoftwareLevels.self, from: old)
+    #expect(s.level(for: "a") == 40 && s.level(for: "b") == 75)
+    #expect(s.warmth(for: "a") == 0 && s.warmth(for: "b") == 0)
+}

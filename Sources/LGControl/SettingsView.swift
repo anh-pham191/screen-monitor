@@ -10,6 +10,7 @@ struct SettingsView: View {
             KeyboardSection()
             WindowsSection()
             BrightnessSyncSection()
+            OtherScreensSection()
             KeepAwakeSection()
             GeneralSection()
         }
@@ -163,6 +164,24 @@ private struct BrightnessSyncSection: View {
 
     private static func format(_ offset: Int) -> String {
         offset > 0 ? "+\(offset)" : offset < 0 ? "−\(-offset)" : "0"
+    }
+}
+
+// MARK: Other screens
+
+private struct OtherScreensSection: View {
+    @EnvironmentObject private var software: SoftwareBrightness
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $software.warmthEnabled) {
+                Text("Warmth sliders")
+                Text("Warms screens without hardware control, like Night Shift (which doesn’t reach DisplayLink screens). Quitting Screen Monitor puts their colours back.")
+            }
+            .toggleStyle(.switch)
+        } header: {
+            Text("Other screens")
+        }
     }
 }
 

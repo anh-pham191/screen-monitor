@@ -97,6 +97,12 @@ menu bar panel, headed by its name. This works whether or not a hardware screen 
 - **Screenshots.** The overlays aren't meant to show up in screenshots or screen sharing; that
   is best effort, and some capture tools may still include them.
 
+Each of these screens also has a **Warmth** slider that sets a real colour temperature, from
+6500 K down to 2700 K, through the screen's colour tables, the way Night Shift does (Night Shift
+itself doesn't reach DisplayLink screens). It removes blue rather than tinting, and it is manual
+only. Quitting Screen Monitor puts the screens' colours back. Turn the sliders off in
+Settings › Other screens (saved values are kept).
+
 ## Follow MacBook brightness
 
 Settings › Brightness › **Follow MacBook brightness** makes the hardware screen track the

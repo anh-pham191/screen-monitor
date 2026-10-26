@@ -86,11 +86,59 @@ public enum SoftwareDimming {
     }
 }
 
+/// Warmth as a colour temperature, applied by scaling a screen's colour tables (which removes
+/// blue, like Night Shift) rather than tinting an overlay.
+public enum ColorTemperature {
+    /// Warmth 0 is 6500 K (neutral), 100 is 2700 K.
+    public static func kelvin(warmth: Int) -> Double {
+        6500 - 38 * Double(SoftwareDimming.clamp(warmth))
+    }
+
+    /// Per-channel factors 0…1, relative to 6500 K. Warmth 0 is exactly (1, 1, 1).
+    public static func multipliers(warmth: Int) -> (red: Double, green: Double, blue: Double) {
+        let clamped = SoftwareDimming.clamp(warmth)
+        guard clamped > 0 else { return (1, 1, 1) }
+        let target = blackBody(kelvin: kelvin(warmth: clamped)), neutral = blackBody(kelvin: 6500)
+        func ratio(_ a: Double, _ b: Double) -> Double { b > 0 ? min(max(a / b, 0), 1) : 1 }
+        return (ratio(target.red, neutral.red), ratio(target.green, neutral.green), ratio(target.blue, neutral.blue))
+    }
+
+    /// Every entry times `factor`.
+    public static func scaled(_ table: [Float], by factor: Double) -> [Float] {
+        table.map { Float(Double($0) * factor) }
+    }
+
+    /// Tanner Helland's black-body approximation, 0…255 per channel, for the warm side (≤ 6600 K).
+    private static func blackBody(kelvin: Double) -> (red: Double, green: Double, blue: Double) {
+        let t = kelvin / 100
+        func clamp255(_ v: Double) -> Double { min(max(v, 0), 255) }
+        let green = clamp255(99.4708025861 * log(t) - 161.1195681661)
+        let blue = t <= 19 ? 0 : clamp255(138.5177312231 * log(t - 10) - 305.0447927307)
+        return (255, green, blue)
+    }
+}
+
 /// Remembered software brightness per screen key. Absent means 100 (no overlay).
 public struct SoftwareLevels: Codable, Equatable, Sendable {
     private var levels: [String: Int] = [:]
+    private var warmths: [String: Int] = [:]
 
     public init() {}
+
+    private enum CodingKeys: String, CodingKey { case levels, warmths }
+
+    /// Data saved before warmth existed has no `warmths`.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        levels = try c.decodeIfPresent([String: Int].self, forKey: .levels) ?? [:]
+        warmths = try c.decodeIfPresent([String: Int].self, forKey: .warmths) ?? [:]
+    }
+
+    public func warmth(for key: String) -> Int { warmths[key] ?? 0 }
+
+    public mutating func setWarmth(_ warmth: Int, for key: String) {
+        warmths[key] = SoftwareDimming.clamp(warmth)
+    }
 
     public func level(for key: String) -> Int { levels[key] ?? 100 }
 
@@ -101,6 +149,7 @@ public struct SoftwareLevels: Codable, Equatable, Sendable {
     /// Returns whether a level was stored.
     @discardableResult
     public mutating func forget(_ key: String) -> Bool {
-        levels.removeValue(forKey: key) != nil
+        let hadWarmth = warmths.removeValue(forKey: key) != nil
+        return levels.removeValue(forKey: key) != nil || hadWarmth
     }
 }

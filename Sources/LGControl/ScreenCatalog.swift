@@ -96,7 +96,7 @@ enum ScreenCatalog {
         ScreenClassifier.classify(all.map(\.0), hardware: hardwareID)
     }
 
-    private static func displayID(of screen: NSScreen) -> CGDirectDisplayID? {
+    static func displayID(of screen: NSScreen) -> CGDirectDisplayID? {
         (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
     }
 }

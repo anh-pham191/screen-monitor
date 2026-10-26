@@ -112,6 +112,11 @@ private struct SoftwareScreenRow: View {
             ValueSlider(title: "Brightness", value: Double(screen.level), maximum: 100) {
                 software.setLevel(Int($0.rounded()), for: screen.id)
             }
+            if software.warmthEnabled {
+                ValueSlider(title: "Warmth", value: Double(screen.warmth), maximum: 100) {
+                    software.setWarmth(Int($0.rounded()), for: screen.id)
+                }
+            }
         }
     }
 }
