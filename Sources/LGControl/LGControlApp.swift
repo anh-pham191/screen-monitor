@@ -37,6 +37,8 @@ struct LGControlApp: App {
 
     init() {
         // One HUD for both, so a hardware and a software key press never show two indicators.
+        // The remembered hardware screen first, so no overlay lands on it at launch.
+        ScreenCatalog.load(from: .standard)
         let hud = HUD()
         let s = SoftwareBrightness(defaults: .standard, hud: hud)
         _softwareBrightness = StateObject(wrappedValue: s)

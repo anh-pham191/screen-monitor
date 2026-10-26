@@ -9,15 +9,28 @@ import LGKit
 /// read over DDC, never just "the first external screen": a DisplayLink screen can come first.
 @MainActor
 enum ScreenCatalog {
-    /// Set by `MonitorModel` from each refresh. Sticky: only a new EDID replaces it, so DDC going
-    /// quiet (the screen showing another input) doesn't turn the hardware screen into a software one.
-    private(set) static var hardwareEDID: EDIDInfo?
+    private static let defaultsKey = "hardwareScreenID"
+    private static var defaults: UserDefaults?
 
-    /// Returns whether the stored EDID changed.
+    /// Set by `MonitorModel` from each refresh's EDID. Sticky: only a different screen replaces it,
+    /// so DDC going quiet (the screen showing another input) doesn't turn the hardware screen into
+    /// a software one. Remembered across launches, so the hardware screen is known before the first
+    /// refresh and never gets a software overlay meanwhile.
+    private(set) static var hardwareID: HardwareScreenID?
+
+    /// Call before anything asks which screen is which (before `SoftwareBrightness` is built).
+    static func load(from defaults: UserDefaults) {
+        self.defaults = defaults
+        hardwareID = defaults.data(forKey: defaultsKey)
+            .flatMap { try? JSONDecoder().decode(HardwareScreenID.self, from: $0) }
+    }
+
+    /// Returns whether the hardware screen changed: an EDID matching the remembered one is no change.
     @discardableResult
     static func update(hardwareEDID edid: EDIDInfo?) -> Bool {
-        guard let edid, edid != hardwareEDID else { return false }
-        hardwareEDID = edid
+        guard let id = edid.flatMap(HardwareScreenID.init(edid:)), id != hardwareID else { return false }
+        hardwareID = id
+        defaults?.set(try? JSONEncoder().encode(id), forKey: defaultsKey)
         return true
     }
 
@@ -41,6 +54,15 @@ enum ScreenCatalog {
         let all = infos()
         let kinds = kinds(of: all)
         return all.first { kinds[$0.0.displayID] == .hardware }?.1
+    }
+
+    /// The level key the hardware screen would have as a software screen, so a level stored
+    /// before it was recognised can be dropped.
+    static func hardwareScreenKey() -> String? {
+        let all = infos()
+        let kinds = kinds(of: all)
+        guard let info = all.first(where: { kinds[$0.0.displayID] == .hardware })?.0 else { return nil }
+        return ScreenKey.key(for: info, among: all.map(\.0))
     }
 
     /// Every external screen without hardware control, keyed for remembering its level.
@@ -71,7 +93,7 @@ enum ScreenCatalog {
     private static func kinds() -> [UInt32: ScreenKind] { kinds(of: infos()) }
 
     private static func kinds(of all: [(ScreenInfo, NSScreen)]) -> [UInt32: ScreenKind] {
-        ScreenClassifier.classify(all.map(\.0), hardwareEDID: hardwareEDID)
+        ScreenClassifier.classify(all.map(\.0), hardware: hardwareID)
     }
 
     private static func displayID(of screen: NSScreen) -> CGDirectDisplayID? {

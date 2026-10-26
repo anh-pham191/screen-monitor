@@ -87,3 +87,26 @@ private let phl2 = ScreenInfo(displayID: 10, isBuiltIn: false, vendor: 0x410C, m
     #expect(WindowPlacement.destination(kinds: [.hardware]) == nil)
     #expect(WindowPlacement.destination(kinds: []) == nil)
 }
+@Test func hardwareScreenIDFromEDID() throws {
+    #expect(HardwareScreenID(edid: lgInfo) == HardwareScreenID(vendor: 0x1E6D, model: 0x5CBB))
+    let bad = EDIDInfo(manufacturerID: "??", productCode: 7, serialNumber: 0, week: 1, year: 2020,
+                       widthCm: 1, heightCm: 1, name: nil, serialString: nil)
+    #expect(HardwareScreenID(edid: bad) == nil)
+    let id = HardwareScreenID(vendor: 0x1E6D, model: 0x5CBB)
+    #expect(try JSONDecoder().decode(HardwareScreenID.self, from: JSONEncoder().encode(id)) == id)
+}
+@Test func classifierAcceptsARememberedHardwareID() {
+    let id = HardwareScreenID(vendor: 0x1E6D, model: 0x5CBB)
+    #expect(ScreenClassifier.classify([macScreen, phl1, lgScreen], hardware: id) == [1: .builtIn, 9: .software, 2: .hardware])
+    #expect(ScreenClassifier.classify([phl1], hardware: nil) == [9: .software])
+    #expect(ScreenClassifier.classify([phl1], hardware: HardwareScreenID(vendor: 0, model: 0xC171)) == [9: .software])
+}
+@Test func softwareLevelsForget() {
+    var s = SoftwareLevels()
+    s.set(30, for: "x")
+    let first = s.forget("x")
+    #expect(first)
+    #expect(s.level(for: "x") == 100)
+    let second = s.forget("x")
+    #expect(!second)
+}

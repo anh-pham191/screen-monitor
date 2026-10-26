@@ -25,6 +25,8 @@ final class SoftwareBrightness: ObservableObject {
     private var overlays: [String: OverlayPanel] = [:]
     private var screenObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
+    /// Called after every rebuild; the key tap uses it to let go of screens that may be gone.
+    var onRebuild: (() -> Void)?
 
     init(defaults: UserDefaults, hud: HUD) {
         self.defaults = defaults
@@ -35,7 +37,10 @@ final class SoftwareBrightness: ObservableObject {
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.rebuild() }
+            MainActor.assumeIsolated {
+                self?.hideMisplacedOverlays()
+                self?.rebuild()
+            }
         }
         // Screens can come back in a different place, or not at all, after sleep.
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -49,17 +54,20 @@ final class SoftwareBrightness: ObservableObject {
     /// Re-reads the screens and puts each overlay on its screen. Also called by `MonitorModel`
     /// when the hardware screen's EDID changes, which can turn a "software" screen into the hardware one.
     func rebuild() {
+        // A level stored while the hardware screen wasn't recognised yet must not dim it later.
+        if let key = ScreenCatalog.hardwareScreenKey(), levels.forget(key) { saveLevels() }
         let current = ScreenCatalog.softwareScreens()
         let list = current.map { SoftwareScreen(id: $0.key, name: $0.name, level: levels.level(for: $0.key)) }
         if list != screens { screens = list }
         let present = Set(current.map(\.key))
         for key in overlays.keys where !present.contains(key) { removeOverlay(key) }
         for entry in current { updateOverlay(key: entry.key, on: entry.screen) }
+        onRebuild?()
     }
 
     func setLevel(_ level: Int, for key: String) {
         levels.set(level, for: key)
-        defaults.set(try? JSONEncoder().encode(levels), forKey: Self.defaultsKey)
+        saveLevels()
         let clamped = levels.level(for: key)
         if let index = screens.firstIndex(where: { $0.id == key }), screens[index].level != clamped {
             screens[index] = SoftwareScreen(id: key, name: screens[index].name, level: clamped)
@@ -81,7 +89,18 @@ final class SoftwareBrightness: ObservableObject {
         hud.show(.brightness, level: HUDLevel.fraction(next, maximum: 100), on: screen)
     }
 
+    private func saveLevels() {
+        defaults.set(try? JSONEncoder().encode(levels), forKey: Self.defaultsKey)
+    }
+
     // MARK: Overlays
+
+    /// After a screen change an overlay may sit where its screen no longer is (or over a screen
+    /// that is now the hardware one); hide those at once, before the rebuild sorts out the rest.
+    private func hideMisplacedOverlays() {
+        let frames = ScreenCatalog.softwareScreens().map(\.screen.frame)
+        for panel in overlays.values where !frames.contains(panel.frame) { panel.orderOut(nil) }
+    }
 
     private func updateOverlay(key: String, on screen: NSScreen) {
         let level = levels.level(for: key)
@@ -109,6 +128,8 @@ private final class OverlayPanel: NSPanel {
         hasShadow = false
         ignoresMouseEvents = true
         hidesOnDeactivate = false
+        // Best effort: keeps screenshots and screen sharing undimmed.
+        sharingType = .none
         // Above normal windows and the menu bar; the HUD sits one level higher.
         level = .screenSaver
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]

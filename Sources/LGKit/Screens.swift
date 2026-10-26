@@ -19,18 +19,40 @@ public struct ScreenInfo: Equatable, Sendable {
 
 public enum ScreenKind: Equatable, Sendable { case builtIn, hardware, software }
 
+/// Which external screen has hardware control: the vendor and model from its EDID, in the same
+/// numbering CoreGraphics uses. Small enough to remember across launches.
+public struct HardwareScreenID: Codable, Equatable, Sendable {
+    public let vendor: UInt32
+    public let model: UInt32
+
+    public init(vendor: UInt32, model: UInt32) {
+        self.vendor = vendor
+        self.model = model
+    }
+
+    /// Nil for a malformed manufacturer ID, which could never match a screen.
+    public init?(edid: EDIDInfo) {
+        guard edid.vendorNumber != 0 else { return nil }
+        self.init(vendor: edid.vendorNumber, model: UInt32(edid.productCode))
+    }
+}
+
 public enum ScreenClassifier {
     /// Built-in screens are `.builtIn`. The first external screen whose CoreGraphics vendor and
     /// model match the EDID read over DDC is `.hardware`; every other external screen is
     /// `.software`. Never "the first external screen": a DisplayLink screen can come first.
     public static func classify(_ screens: [ScreenInfo], hardwareEDID: EDIDInfo?) -> [UInt32: ScreenKind] {
+        classify(screens, hardware: hardwareEDID.flatMap(HardwareScreenID.init(edid:)))
+    }
+
+    public static func classify(_ screens: [ScreenInfo], hardware: HardwareScreenID?) -> [UInt32: ScreenKind] {
         var kinds: [UInt32: ScreenKind] = [:]
         var foundHardware = false
         for screen in screens {
             if screen.isBuiltIn {
                 kinds[screen.displayID] = .builtIn
-            } else if !foundHardware, let edid = hardwareEDID, edid.vendorNumber != 0,
-                      screen.vendor == edid.vendorNumber, screen.model == UInt32(edid.productCode) {
+            } else if !foundHardware, let id = hardware, id.vendor != 0,
+                      screen.vendor == id.vendor, screen.model == id.model {
                 kinds[screen.displayID] = .hardware
                 foundHardware = true
             } else {
@@ -74,5 +96,11 @@ public struct SoftwareLevels: Codable, Equatable, Sendable {
 
     public mutating func set(_ level: Int, for key: String) {
         levels[key] = SoftwareDimming.clamp(level)
+    }
+
+    /// Returns whether a level was stored.
+    @discardableResult
+    public mutating func forget(_ key: String) -> Bool {
+        levels.removeValue(forKey: key) != nil
     }
 }

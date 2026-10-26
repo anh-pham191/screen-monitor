@@ -167,6 +167,7 @@ final class MonitorModel: ObservableObject {
 
         keyTap.model = self
         keyTap.softwareBrightness = softwareBrightness
+        softwareBrightness.onRebuild = { [weak keyTap] in keyTap?.forgetSoftwareTargets() }
         if (keysEnabled || splitEnabled) && !accessibilityTrusted { Accessibility.prompt() }
         recheckAccessibility()
         // Resuming after a relaunch keeps the stored offset: the LG isn't read yet, so there is

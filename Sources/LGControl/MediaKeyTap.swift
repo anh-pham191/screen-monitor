@@ -80,8 +80,12 @@ final class MediaKeyTap {
                                    hardwareConnected: model.connected)
         }
         switch action {
-        case .passThrough: return false
-        case .swallow: return true
+        case .passThrough:
+            if !key.isDown { softwareTargets[key.key] = nil }
+            return false
+        case .swallow:
+            if !key.isDown { softwareTargets[key.key] = nil }
+            return true
         case .handle(.hardware, let fine):
             model.handleMediaKey(key, fine: fine)
             return true
@@ -95,6 +99,12 @@ final class MediaKeyTap {
             // The gate never hands out this route; give the key back to macOS if it ever does.
             return false
         }
+    }
+
+    /// Called after the screens are rebuilt: a remembered NSScreen may belong to a screen that's gone.
+    /// A press already under way is still swallowed; it just steps nothing.
+    func forgetSoftwareTargets() {
+        softwareTargets = [:]
     }
 
     private func decode(type: CGEventType, event: CGEvent) -> MediaKeyEvent? {
