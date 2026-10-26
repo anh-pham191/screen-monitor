@@ -40,14 +40,20 @@ public struct MediaKeyEvent: Equatable, Sendable {
     }
 }
 
-public enum KeyRoute: Equatable, Sendable { case lg, passThrough }
+/// Who handles a key: the DDC screen, a software-dimmed screen, or macOS.
+public enum KeyRoute: Equatable, Sendable { case hardware, software, passThrough }
 
 public enum KeyRouter {
-    public static func route(_ key: MediaKey, pointerOnLG: Bool, lgIsSoundOutput: Bool, lgConnected: Bool) -> KeyRoute {
-        guard lgConnected else { return .passThrough }
+    /// - Parameter pointerScreen: the kind of screen under the pointer, nil when it's on none.
+    public static func route(_ key: MediaKey, pointerScreen: ScreenKind?, hardwareIsSoundOutput: Bool,
+                             hardwareConnected: Bool) -> KeyRoute {
         switch key {
-        case .brightnessUp, .brightnessDown: return pointerOnLG ? .lg : .passThrough
-        case .volumeUp, .volumeDown, .mute: return lgIsSoundOutput ? .lg : .passThrough
+        case .brightnessUp, .brightnessDown:
+            // A software screen needs no DDC, so it works whatever the hardware screen is doing.
+            if pointerScreen == .software { return .software }
+            return pointerScreen == .hardware && hardwareConnected ? .hardware : .passThrough
+        case .volumeUp, .volumeDown, .mute:
+            return hardwareConnected && hardwareIsSoundOutput ? .hardware : .passThrough
         }
     }
 

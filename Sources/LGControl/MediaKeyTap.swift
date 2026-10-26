@@ -61,19 +61,23 @@ final class MediaKeyTap {
         let modifiers = KeyRouter.modifiersAllowHandling(
             option: flags.contains(.maskAlternate), shift: flags.contains(.maskShift),
             control: flags.contains(.maskControl), command: flags.contains(.maskCommand))
-        let action = gate.decide(key, modifiers: modifiers, canHandle: model.canHandleMediaKey(key.key)) {
+        let action = gate.decide(key, modifiers: modifiers,
+                                 canHandle: { $0 == .software || model.canHandleMediaKey(key.key) }) {
             KeyRouter.route(key.key,
-                            pointerOnLG: Self.pointerOnLG(),
+                            pointerScreen: Self.pointerOnLG() ? .hardware : nil,
                             // Only the volume keys need CoreAudio; skip the lookup for brightness.
-                            lgIsSoundOutput: key.key.isAudio && AudioOutput.lgIsSoundOutput(lgName: model.lgName),
-                            lgConnected: model.connected)
+                            hardwareIsSoundOutput: key.key.isAudio && AudioOutput.lgIsSoundOutput(lgName: model.lgName),
+                            hardwareConnected: model.connected)
         }
         switch action {
         case .passThrough: return false
         case .swallow: return true
-        case .handle(let fine):
+        case .handle(.hardware, let fine):
             model.handleMediaKey(key, fine: fine)
             return true
+        case .handle(_, _):
+            // Software route: nothing to step until the screen catalog exists, so pass it on.
+            return false
         }
     }
 

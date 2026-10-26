@@ -4,42 +4,45 @@ import Foundation
 public enum KeyAction: Equatable, Sendable {
     /// Give the event back to macOS unchanged.
     case passThrough
-    /// Drop the event without acting on it (the rest of a press the LG owns).
+    /// Drop the event without acting on it (the rest of a press we own).
     case swallow
-    /// Drop the event and step the LG.
-    case handle(fine: Bool)
+    /// Drop the event and step the screen the route names.
+    case handle(route: KeyRoute, fine: Bool)
 }
 
-/// Decides, per press, whether the LG or macOS owns a media key.
+/// Decides, per press, whether we or macOS own a media key, and which screen we step.
 ///
-/// The owner is fixed by the first key-down of a press. Repeats and the key-up follow it even if
-/// the pointer or sound output changes mid-press, so macOS never sees a key-up for a key-down it
-/// didn't get, and one held key never drives two displays.
+/// The owner and route are fixed by the first key-down of a press. Repeats and the key-up follow
+/// them even if the pointer or sound output changes mid-press, so macOS never sees a key-up for a
+/// key-down it didn't get, and one held key never drives two displays.
 public struct MediaKeyGate: Sendable {
-    private var owned: Set<MediaKey> = []
+    private var owned: [MediaKey: KeyRoute] = [:]
 
     public init() {}
 
     /// - Parameters:
     ///   - modifiers: the result of `KeyRouter.modifiersAllowHandling` for the event's flags.
-    ///   - canHandle: false while the LG's maximum for this control is unknown.
+    ///   - canHandle: whether the screen behind a route can take the key now (false while the
+    ///     hardware screen's maximum for this control is unknown).
     ///   - route: asked only for the first key-down of a press, because it may query CoreAudio.
     public mutating func decide(_ event: MediaKeyEvent, modifiers: (handle: Bool, fine: Bool),
-                                canHandle: Bool, route: () -> KeyRoute) -> KeyAction {
+                                canHandle: (KeyRoute) -> Bool, route: () -> KeyRoute) -> KeyAction {
         guard event.isDown else {
-            return owned.remove(event.key) != nil ? .swallow : .passThrough
+            return owned.removeValue(forKey: event.key) != nil ? .swallow : .passThrough
         }
         if event.isRepeat {
-            guard owned.contains(event.key) else { return .passThrough }
+            guard let stored = owned[event.key] else { return .passThrough }
             // Mute is a toggle, not a step: acting on each repeat would flick it on and off while held.
             if event.key == .mute { return .swallow }
-            return modifiers.handle && canHandle ? .handle(fine: modifiers.fine) : .swallow
+            return modifiers.handle && canHandle(stored) ? .handle(route: stored, fine: modifiers.fine) : .swallow
         }
         // A fresh press: forget any press whose key-up we never saw.
-        owned.remove(event.key)
-        guard modifiers.handle, canHandle, route() == .lg else { return .passThrough }
-        owned.insert(event.key)
-        return .handle(fine: modifiers.fine)
+        owned.removeValue(forKey: event.key)
+        guard modifiers.handle else { return .passThrough }
+        let chosen = route()
+        guard chosen != .passThrough, canHandle(chosen) else { return .passThrough }
+        owned[event.key] = chosen
+        return .handle(route: chosen, fine: modifiers.fine)
     }
 }
 

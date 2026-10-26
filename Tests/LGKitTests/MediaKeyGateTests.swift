@@ -8,76 +8,76 @@ private let blocked = (handle: false, fine: false)
 private func down(_ key: MediaKey, repeat rep: Bool = false) -> MediaKeyEvent { MediaKeyEvent(key: key, isDown: true, isRepeat: rep) }
 private func up(_ key: MediaKey) -> MediaKeyEvent { MediaKeyEvent(key: key, isDown: false, isRepeat: false) }
 
-@Test func handlesAPressRoutedToTheLGAndSwallowsItsKeyUp() {
+@Test func handlesAPressRoutedToTheHardwareScreenAndSwallowsItsKeyUp() {
     var gate = MediaKeyGate()
-    #expect(gate.decide(down(.brightnessUp), modifiers: plain, canHandle: true, route: { .lg }) == .handle(fine: false))
-    #expect(gate.decide(up(.brightnessUp), modifiers: plain, canHandle: true, route: { .lg }) == .swallow)
+    #expect(gate.decide(down(.brightnessUp), modifiers: plain, canHandle: { _ in true }, route: { .hardware }) == .handle(route: .hardware, fine: false))
+    #expect(gate.decide(up(.brightnessUp), modifiers: plain, canHandle: { _ in true }, route: { .hardware }) == .swallow)
 }
 
 @Test func swallowsTheKeyUpEvenAfterThePointerMoved() {
     var gate = MediaKeyGate()
-    _ = gate.decide(down(.brightnessDown), modifiers: plain, canHandle: true, route: { .lg })
-    #expect(gate.decide(up(.brightnessDown), modifiers: plain, canHandle: true, route: { .passThrough }) == .swallow)
+    _ = gate.decide(down(.brightnessDown), modifiers: plain, canHandle: { _ in true }, route: { .hardware })
+    #expect(gate.decide(up(.brightnessDown), modifiers: plain, canHandle: { _ in true }, route: { .passThrough }) == .swallow)
     // The press is over, so the next key-up for that key is not ours.
-    #expect(gate.decide(up(.brightnessDown), modifiers: plain, canHandle: true, route: { .lg }) == .passThrough)
+    #expect(gate.decide(up(.brightnessDown), modifiers: plain, canHandle: { _ in true }, route: { .hardware }) == .passThrough)
 }
 
 @Test func passesThroughWhenRoutedAwayAndLeavesItsKeyUpAlone() {
     var gate = MediaKeyGate()
-    #expect(gate.decide(down(.volumeUp), modifiers: plain, canHandle: true, route: { .passThrough }) == .passThrough)
-    #expect(gate.decide(up(.volumeUp), modifiers: plain, canHandle: true, route: { .lg }) == .passThrough)
+    #expect(gate.decide(down(.volumeUp), modifiers: plain, canHandle: { _ in true }, route: { .passThrough }) == .passThrough)
+    #expect(gate.decide(up(.volumeUp), modifiers: plain, canHandle: { _ in true }, route: { .hardware }) == .passThrough)
 }
 
 @Test func passesThroughWithOtherModifiers() {
     var gate = MediaKeyGate()
-    #expect(gate.decide(down(.brightnessUp), modifiers: blocked, canHandle: true, route: { .lg }) == .passThrough)
-    #expect(gate.decide(up(.brightnessUp), modifiers: blocked, canHandle: true, route: { .lg }) == .passThrough)
+    #expect(gate.decide(down(.brightnessUp), modifiers: blocked, canHandle: { _ in true }, route: { .hardware }) == .passThrough)
+    #expect(gate.decide(up(.brightnessUp), modifiers: blocked, canHandle: { _ in true }, route: { .hardware }) == .passThrough)
 }
 
 @Test func optionShiftGivesFineSteps() {
     var gate = MediaKeyGate()
-    #expect(gate.decide(down(.volumeDown), modifiers: optionShift, canHandle: true, route: { .lg }) == .handle(fine: true))
+    #expect(gate.decide(down(.volumeDown), modifiers: optionShift, canHandle: { _ in true }, route: { .hardware }) == .handle(route: .hardware, fine: true))
 }
 
 @Test func passesThroughWhenTheMaximumIsUnknown() {
     var gate = MediaKeyGate()
-    #expect(gate.decide(down(.brightnessUp), modifiers: plain, canHandle: false, route: { .lg }) == .passThrough)
-    #expect(gate.decide(up(.brightnessUp), modifiers: plain, canHandle: false, route: { .lg }) == .passThrough)
+    #expect(gate.decide(down(.brightnessUp), modifiers: plain, canHandle: { _ in false }, route: { .hardware }) == .passThrough)
+    #expect(gate.decide(up(.brightnessUp), modifiers: plain, canHandle: { _ in false }, route: { .hardware }) == .passThrough)
 }
 
 @Test func repeatsFollowTheOwnerOfThePress() {
     var gate = MediaKeyGate()
-    _ = gate.decide(down(.brightnessUp), modifiers: plain, canHandle: true, route: { .lg })
+    _ = gate.decide(down(.brightnessUp), modifiers: plain, canHandle: { _ in true }, route: { .hardware })
     // The pointer moving mid-hold doesn't split one press between two displays.
-    #expect(gate.decide(down(.brightnessUp, repeat: true), modifiers: plain, canHandle: true, route: { .passThrough }) == .handle(fine: false))
+    #expect(gate.decide(down(.brightnessUp, repeat: true), modifiers: plain, canHandle: { _ in true }, route: { .passThrough }) == .handle(route: .hardware, fine: false))
     // A modifier change mid-hold stops the stepping but the press stays ours.
-    #expect(gate.decide(down(.brightnessUp, repeat: true), modifiers: blocked, canHandle: true, route: { .lg }) == .swallow)
+    #expect(gate.decide(down(.brightnessUp, repeat: true), modifiers: blocked, canHandle: { _ in true }, route: { .hardware }) == .swallow)
     // A repeat for a press we never saw belongs to macOS.
-    #expect(gate.decide(down(.volumeUp, repeat: true), modifiers: plain, canHandle: true, route: { .lg }) == .passThrough)
+    #expect(gate.decide(down(.volumeUp, repeat: true), modifiers: plain, canHandle: { _ in true }, route: { .hardware }) == .passThrough)
 }
 
 @Test func doesNotAskForTheRouteOnKeyUpsOrRepeats() {
     var gate = MediaKeyGate()
     var asked = 0
-    _ = gate.decide(down(.mute), modifiers: plain, canHandle: true, route: { asked += 1; return .lg })
-    _ = gate.decide(down(.mute, repeat: true), modifiers: plain, canHandle: true, route: { asked += 1; return .lg })
-    _ = gate.decide(up(.mute), modifiers: plain, canHandle: true, route: { asked += 1; return .lg })
+    _ = gate.decide(down(.mute), modifiers: plain, canHandle: { _ in true }, route: { asked += 1; return .hardware })
+    _ = gate.decide(down(.mute, repeat: true), modifiers: plain, canHandle: { _ in true }, route: { asked += 1; return .hardware })
+    _ = gate.decide(up(.mute), modifiers: plain, canHandle: { _ in true }, route: { asked += 1; return .hardware })
     #expect(asked == 1)
 }
 
 @Test func aFreshPressReplacesAStaleOne() {
     var gate = MediaKeyGate()
-    _ = gate.decide(down(.brightnessUp), modifiers: plain, canHandle: true, route: { .lg })
+    _ = gate.decide(down(.brightnessUp), modifiers: plain, canHandle: { _ in true }, route: { .hardware })
     // The key-up was lost (for example the tap was briefly disabled); the next press goes to macOS.
-    #expect(gate.decide(down(.brightnessUp), modifiers: plain, canHandle: true, route: { .passThrough }) == .passThrough)
-    #expect(gate.decide(up(.brightnessUp), modifiers: plain, canHandle: true, route: { .lg }) == .passThrough)
+    #expect(gate.decide(down(.brightnessUp), modifiers: plain, canHandle: { _ in true }, route: { .passThrough }) == .passThrough)
+    #expect(gate.decide(up(.brightnessUp), modifiers: plain, canHandle: { _ in true }, route: { .hardware }) == .passThrough)
 }
 
 @Test func tracksKeysIndependently() {
     var gate = MediaKeyGate()
-    _ = gate.decide(down(.brightnessUp), modifiers: plain, canHandle: true, route: { .lg })
-    #expect(gate.decide(up(.volumeUp), modifiers: plain, canHandle: true, route: { .lg }) == .passThrough)
-    #expect(gate.decide(up(.brightnessUp), modifiers: plain, canHandle: true, route: { .lg }) == .swallow)
+    _ = gate.decide(down(.brightnessUp), modifiers: plain, canHandle: { _ in true }, route: { .hardware })
+    #expect(gate.decide(up(.volumeUp), modifiers: plain, canHandle: { _ in true }, route: { .hardware }) == .passThrough)
+    #expect(gate.decide(up(.brightnessUp), modifiers: plain, canHandle: { _ in true }, route: { .hardware }) == .swallow)
 }
 
 @Test func roundsSliderValuesIntoTheDDCRange() {
@@ -106,9 +106,34 @@ private func up(_ key: MediaKey) -> MediaKeyEvent { MediaKeyEvent(key: key, isDo
 
 @Test func holdingMuteTogglesItOnlyOnce() {
     var gate = MediaKeyGate()
-    #expect(gate.decide(down(.mute), modifiers: plain, canHandle: true, route: { .lg }) == .handle(fine: false))
+    #expect(gate.decide(down(.mute), modifiers: plain, canHandle: { _ in true }, route: { .hardware }) == .handle(route: .hardware, fine: false))
     // Mute is a toggle: acting on every repeat would flicker it on and off while held.
-    #expect(gate.decide(down(.mute, repeat: true), modifiers: plain, canHandle: true, route: { .lg }) == .swallow)
-    #expect(gate.decide(down(.mute, repeat: true), modifiers: plain, canHandle: true, route: { .lg }) == .swallow)
-    #expect(gate.decide(up(.mute), modifiers: plain, canHandle: true, route: { .lg }) == .swallow)
+    #expect(gate.decide(down(.mute, repeat: true), modifiers: plain, canHandle: { _ in true }, route: { .hardware }) == .swallow)
+    #expect(gate.decide(down(.mute, repeat: true), modifiers: plain, canHandle: { _ in true }, route: { .hardware }) == .swallow)
+    #expect(gate.decide(up(.mute), modifiers: plain, canHandle: { _ in true }, route: { .hardware }) == .swallow)
+}
+
+@Test func softwarePressKeepsItsRouteForRepeatAndKeyUp() {
+    var gate = MediaKeyGate()
+    #expect(gate.decide(down(.brightnessUp), modifiers: plain, canHandle: { _ in true }, route: { .software }) == .handle(route: .software, fine: false))
+    // The pointer moving to the hardware screen mid-hold doesn't change who owns the press.
+    #expect(gate.decide(down(.brightnessUp, repeat: true), modifiers: optionShift, canHandle: { _ in true }, route: { .hardware }) == .handle(route: .software, fine: true))
+    #expect(gate.decide(up(.brightnessUp), modifiers: plain, canHandle: { _ in true }, route: { .hardware }) == .swallow)
+    #expect(gate.decide(up(.brightnessUp), modifiers: plain, canHandle: { _ in true }, route: { .hardware }) == .passThrough)
+}
+
+@Test func canHandleIsAskedForTheChosenRoute() {
+    var gate = MediaKeyGate()
+    var asked: [KeyRoute] = []
+    let canHandle: (KeyRoute) -> Bool = { asked.append($0); return $0 == .software }
+    // Hardware route chosen but the hardware can't handle it: macOS keeps the press.
+    #expect(gate.decide(down(.brightnessUp), modifiers: plain, canHandle: canHandle, route: { .hardware }) == .passThrough)
+    #expect(asked == [.hardware])
+    // A software press is handled, and its repeats ask about the stored route.
+    #expect(gate.decide(down(.brightnessDown), modifiers: plain, canHandle: canHandle, route: { .software }) == .handle(route: .software, fine: false))
+    #expect(gate.decide(down(.brightnessDown, repeat: true), modifiers: plain, canHandle: canHandle, route: { .hardware }) == .handle(route: .software, fine: false))
+    #expect(asked == [.hardware, .software, .software])
+    // A pass-through route never reaches canHandle.
+    #expect(gate.decide(down(.volumeUp), modifiers: plain, canHandle: canHandle, route: { .passThrough }) == .passThrough)
+    #expect(asked == [.hardware, .software, .software])
 }

@@ -22,6 +22,14 @@ public struct EDIDInfo: Equatable, Sendable {
         self.serialString = serialString
     }
 
+    /// The manufacturer ID packed the way CoreGraphics reports a vendor (`CGDisplayVendorNumber`);
+    /// 0 unless the ID is exactly three letters A–Z.
+    public var vendorNumber: UInt32 {
+        let letters = manufacturerID.unicodeScalars.map(\.value)
+        guard letters.count == 3, letters.allSatisfy({ (65...90).contains($0) }) else { return 0 }
+        return ((letters[0] - 64) << 10) | ((letters[1] - 64) << 5) | (letters[2] - 64)
+    }
+
     private static let header: [UInt8] = [0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00]
 
     /// Parses the 128-byte EDID base block; extension blocks are ignored.

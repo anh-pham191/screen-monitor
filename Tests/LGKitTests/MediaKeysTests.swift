@@ -23,11 +23,12 @@ func data1(_ code: Int, down: Bool, rep: Bool = false) -> Int { (code << 16) | (
     #expect(MediaKeyEvent.decode(subtype: 8, data1: data1(16, down: true)) == nil)
 }
 @Test func routesKeysByPointerAndSoundOutput() {
-    #expect(KeyRouter.route(.brightnessUp, pointerOnLG: true, lgIsSoundOutput: false, lgConnected: true) == .lg)
-    #expect(KeyRouter.route(.brightnessUp, pointerOnLG: false, lgIsSoundOutput: true, lgConnected: true) == .passThrough)
-    #expect(KeyRouter.route(.volumeUp, pointerOnLG: false, lgIsSoundOutput: true, lgConnected: true) == .lg)
-    #expect(KeyRouter.route(.mute, pointerOnLG: true, lgIsSoundOutput: false, lgConnected: true) == .passThrough)
-    #expect(KeyRouter.route(.brightnessUp, pointerOnLG: true, lgIsSoundOutput: true, lgConnected: false) == .passThrough)
+    #expect(KeyRouter.route(.brightnessUp, pointerScreen: .hardware, hardwareIsSoundOutput: false, hardwareConnected: true) == .hardware)
+    #expect(KeyRouter.route(.brightnessUp, pointerScreen: nil, hardwareIsSoundOutput: true, hardwareConnected: true) == .passThrough)
+    #expect(KeyRouter.route(.volumeUp, pointerScreen: nil, hardwareIsSoundOutput: true, hardwareConnected: true) == .hardware)
+    #expect(KeyRouter.route(.mute, pointerScreen: .hardware, hardwareIsSoundOutput: false, hardwareConnected: true) == .passThrough)
+    #expect(KeyRouter.route(.brightnessUp, pointerScreen: .hardware, hardwareIsSoundOutput: true, hardwareConnected: false) == .passThrough)
+    #expect(KeyRouter.route(.volumeDown, pointerScreen: .hardware, hardwareIsSoundOutput: true, hardwareConnected: false) == .passThrough)
 }
 @Test func stepsLikeMacOS() {
     #expect(Stepper.step(current: 26, maximum: 100, up: true, fine: false) == 31)
