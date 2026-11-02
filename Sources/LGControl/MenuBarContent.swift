@@ -68,20 +68,43 @@ struct MenuBarContent: View {
 private struct FitWindowToContent: NSViewRepresentable {
     let layout: [Int]
 
-    func makeNSView(context: Context) -> NSView { NSView() }
+    func makeNSView(context: Context) -> FitView { FitView() }
 
-    func updateNSView(_ view: NSView, context: Context) {
-        // After this layout pass, once the new content has its size.
-        DispatchQueue.main.async {
-            guard let window = view.window, let content = window.contentView else { return }
-            let size = content.fittingSize
-            guard size.height > 0, abs(window.frame.height - size.height) > 1 else { return }
-            var frame = window.frame
-            // Keep the top edge under the menu bar.
-            frame.origin.y += frame.height - size.height
-            frame.size.height = size.height
-            window.setFrame(frame, display: true)
+    func updateNSView(_ view: FitView, context: Context) { view.fitSoon() }
+}
+
+/// Sections usually change while the panel is closed (sleep, then waking at another desk), when
+/// there's no window to resize. So it also fits each time the panel opens.
+private final class FitView: NSView {
+    private var observers: [NSObjectProtocol] = []
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers = []
+        guard let window else { return }
+        observers = [NSWindow.didBecomeKeyNotification, NSWindow.didChangeOcclusionStateNotification].map {
+            NotificationCenter.default.addObserver(forName: $0, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.fitSoon() }
+            }
         }
+        fitSoon()
+    }
+
+    func fitSoon() {
+        // After this layout pass, once the new content has its size.
+        DispatchQueue.main.async { [weak self] in self?.fit() }
+    }
+
+    private func fit() {
+        guard let window, window.isVisible, let content = window.contentView else { return }
+        let size = content.fittingSize
+        guard size.height > 0, abs(window.frame.height - size.height) > 1 else { return }
+        var frame = window.frame
+        // Keep the top edge under the menu bar.
+        frame.origin.y += frame.height - size.height
+        frame.size.height = size.height
+        window.setFrame(frame, display: true)
     }
 }
 
