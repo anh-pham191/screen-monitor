@@ -7,12 +7,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Set by the App's init, so quitting can release the power assertions. Static because the
     /// delegate adaptor's instance isn't reachable from there.
     static var keepAwake: KeepAwakeModel?
+    /// Set by the App's init with the models in place; the menu bar panel is built from it once
+    /// AppKit has finished launching.
+    static var makeMenuBarPanel: (() -> MenuBarPanel)?
+    private var menuBarPanel: MenuBarPanel?
 
     // The menu bar icon should outlive the main window.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppPresentation.applyDockPolicy(showInDock: UserDefaults.standard.bool(forKey: DockPolicy.defaultsKey))
+        menuBarPanel = Self.makeMenuBarPanel?()
         // SwiftUI opens the first Window scene at launch, and `defaultLaunchBehavior(.suppressed)`
         // can't be applied conditionally (macOS 15 only; SceneBuilder has no else). Close it
         // before it is drawn so only the menu bar icon appears, including at login.
@@ -47,6 +52,11 @@ struct LGControlApp: App {
         let k = KeepAwakeModel(monitor: m)
         _keepAwake = StateObject(wrappedValue: k)
         AppDelegate.keepAwake = k
+        AppDelegate.makeMenuBarPanel = {
+            MenuBarPanel(keepAwake: k) {
+                MenuBarContent().environmentObject(m).environmentObject(s).environmentObject(k)
+            }
+        }
     }
 
     var body: some Scene {
@@ -62,32 +72,6 @@ struct LGControlApp: App {
         Settings {
             SettingsView().environmentObject(model).environmentObject(softwareBrightness).environmentObject(keepAwake)
         }
-
-        // The window style is needed for sliders; the default menu style can't host them.
-        MenuBarExtra {
-            MenuBarContent().environmentObject(model).environmentObject(softwareBrightness).environmentObject(keepAwake)
-        } label: {
-            MenuBarLabel().environmentObject(keepAwake)
-        }
-        .menuBarExtraStyle(.window)
     }
 }
 
-/// While Keep Awake holds, the time left (or the port) sits beside the icon.
-private struct MenuBarLabel: View {
-    @EnvironmentObject private var keepAwake: KeepAwakeModel
-    var body: some View {
-        Group {
-            if let badge = keepAwake.badgeText {
-                // Monospaced digits stop the menu bar item jittering as the minutes change.
-                HStack(spacing: 3) {
-                    Image(systemName: "display")
-                    Text(badge).monospacedDigit()
-                }
-            } else {
-                Image(systemName: "display")
-            }
-        }
-        .accessibilityLabel("Screen Monitor")
-    }
-}
